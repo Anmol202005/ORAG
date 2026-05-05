@@ -131,9 +131,16 @@ function UserAvatar({ user }: { user: Me }) {
 }
 
 // ── Create Org Modal ──────────────────────────────────────────────────────────
-function CreateOrgModal({ onClose }: { onClose: () => void }) {
+interface CreateOrgModalProps {
+  onClose: () => void;
+  onCreated: (org: Org) => void;
+}
+
+function CreateOrgModal({ onClose, onCreated }: CreateOrgModalProps) {
   const [form, setForm] = useState({ name: "", slug: "", description: "", isPublic: false });
   const [slugEdited, setSlugEdited] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const toSlug = (v: string) =>
     v.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -146,9 +153,53 @@ function CreateOrgModal({ onClose }: { onClose: () => void }) {
     }));
   };
 
-  const handleCreate = () => {
-    // TODO: call /api/createOrg
-    onClose();
+  const handleCreate = async () => {
+    setError(null);
+    setLoading(true);
+
+    const token = localStorage.getItem("auth_token");
+
+    try {
+      const res = await fetch("/api/orgs", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          name: form.name.trim(),
+          slug: form.slug,
+          description: form.description.trim(),
+          isPublic: form.isPublic,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        // Surface exact error from API (e.g. "slug is already taken", validation errors)
+        throw new Error(data.error ?? `Request failed: ${res.status}`);
+      }
+
+      // data.org matches the shape returned by api/orgs/index.ts
+      onCreated({
+        id: data.org.id,
+        name: data.org.name,
+        slug: data.org.slug,
+        description: data.org.description,
+        isPublic: data.org.isPublic,
+        memberCount: data.org.memberCount,
+        sources: data.org.sources,
+        mcpServers: data.org.mcpServers,
+        role: data.org.role, // "owner"
+      });
+
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -180,8 +231,10 @@ function CreateOrgModal({ onClose }: { onClose: () => void }) {
           </div>
           <button
             onClick={onClose}
+            disabled={loading}
             className="font-mono text-[11px] text-white/25 hover:text-white/60
-                       border border-white/[0.08] px-2.5 py-1 rounded transition-colors duration-150"
+                       border border-white/[0.08] px-2.5 py-1 rounded transition-colors duration-150
+                       disabled:opacity-30 disabled:cursor-not-allowed"
           >
             ✕
           </button>
@@ -197,9 +250,11 @@ function CreateOrgModal({ onClose }: { onClose: () => void }) {
               placeholder="Acme Engineering"
               value={form.name}
               onChange={(e) => handleName(e.target.value)}
+              disabled={loading}
               className="w-full bg-white/[0.04] border border-white/[0.08] rounded-md px-4 py-2.5
                          text-sm font-light text-white placeholder-white/20 outline-none
-                         focus:border-white/20 transition-colors duration-150"
+                         focus:border-white/20 transition-colors duration-150
+                         disabled:opacity-50 disabled:cursor-not-allowed"
               autoFocus
             />
           </div>
@@ -217,12 +272,14 @@ function CreateOrgModal({ onClose }: { onClose: () => void }) {
                 type="text"
                 placeholder="acme-eng"
                 value={form.slug}
+                disabled={loading}
                 onChange={(e) => {
                   setSlugEdited(true);
                   setForm((f) => ({ ...f, slug: toSlug(e.target.value) }));
                 }}
                 className="flex-1 bg-transparent px-3 py-2.5 text-sm font-light text-white
-                           placeholder-white/20 outline-none"
+                           placeholder-white/20 outline-none
+                           disabled:opacity-50 disabled:cursor-not-allowed"
               />
             </div>
           </div>
@@ -236,10 +293,12 @@ function CreateOrgModal({ onClose }: { onClose: () => void }) {
               rows={3}
               placeholder="What does this organization do?"
               value={form.description}
+              disabled={loading}
               onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
               className="w-full bg-white/[0.04] border border-white/[0.08] rounded-md px-4 py-2.5
                          text-sm font-light text-white placeholder-white/20 outline-none resize-none
-                         focus:border-white/20 transition-colors duration-150"
+                         focus:border-white/20 transition-colors duration-150
+                         disabled:opacity-50 disabled:cursor-not-allowed"
             />
           </div>
 
@@ -253,9 +312,10 @@ function CreateOrgModal({ onClose }: { onClose: () => void }) {
               </p>
             </div>
             <div
-              onClick={() => setForm((f) => ({ ...f, isPublic: !f.isPublic }))}
+              onClick={() => !loading && setForm((f) => ({ ...f, isPublic: !f.isPublic }))}
               className={`relative rounded-full border transition-all duration-200 cursor-pointer
-                          ${form.isPublic ? "bg-white/20 border-white/30" : "bg-white/[0.04] border-white/[0.10]"}`}
+                          ${form.isPublic ? "bg-white/20 border-white/30" : "bg-white/[0.04] border-white/[0.10]"}
+                          ${loading ? "opacity-50 cursor-not-allowed" : ""}`}
               style={{ height: 22, width: 40 }}
             >
               <motion.div
@@ -267,23 +327,49 @@ function CreateOrgModal({ onClose }: { onClose: () => void }) {
           </label>
         </div>
 
+        {/* ── API error banner ── */}
+        <AnimatePresence>
+          {error && (
+            <motion.div
+              initial={{ opacity: 0, y: -6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              transition={{ duration: 0.2 }}
+              className="mt-5 border border-red-500/20 bg-red-500/[0.06] rounded-md px-4 py-3"
+            >
+              <p className="font-mono text-[11px] text-red-400/80 tracking-wider">{error}</p>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         <div className="border-t border-white/[0.07] my-7" />
 
         <div className="flex items-center gap-3">
           <button
             onClick={handleCreate}
-            disabled={!form.name || !form.slug}
+            disabled={!form.name || !form.slug || loading}
             className="flex-1 bg-white text-black font-mono text-[11px] tracking-widest uppercase
                        py-2.5 rounded hover:bg-white/85 transition-opacity duration-150
-                       disabled:opacity-30 disabled:cursor-not-allowed"
+                       disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center"
           >
-            Create organization
+            {loading ? (
+              <motion.span
+                animate={{ opacity: [1, 0.3, 1] }}
+                transition={{ repeat: Infinity, duration: 0.9 }}
+              >
+                Creating…
+              </motion.span>
+            ) : (
+              "Create organization"
+            )}
           </button>
           <button
             onClick={onClose}
+            disabled={loading}
             className="font-mono text-[11px] tracking-widest uppercase text-white/35
                        border border-white/[0.08] px-4 py-2.5 rounded
-                       hover:text-white/55 hover:border-white/15 transition-all duration-150"
+                       hover:text-white/55 hover:border-white/15 transition-all duration-150
+                       disabled:opacity-30 disabled:cursor-not-allowed"
           >
             Cancel
           </button>
@@ -374,6 +460,11 @@ export default function Organizations() {
 
     fetchMyOrgs();
   }, [navigate]);
+
+  // ── Prepend newly created org to the list ──
+  const handleOrgCreated = (newOrg: Org) => {
+    setMyOrgs((prev) => [newOrg, ...prev]);
+  };
 
   const filteredPublic = PUBLIC_ORGS.filter(
     (o) =>
@@ -497,7 +588,6 @@ export default function Organizations() {
             </p>
           </div>
 
-          {/* Loading state */}
           {orgsLoading ? (
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-px border border-white/[0.07] rounded-lg overflow-hidden">
               {[0, 1, 2].map((i) => (
@@ -544,53 +634,56 @@ export default function Organizations() {
             </p>
           ) : (
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-px border border-white/[0.07] rounded-lg overflow-hidden">
-              {myOrgs.map((org, i) => (
-                <motion.div
-                  key={org.id}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.35, delay: 0.1 + i * 0.06 }}
-                  onClick={() => navigate(`/org/${org.slug}`)}
-                  className="group relative bg-white/[0.015] hover:bg-white/[0.04]
-                             transition-colors duration-200 p-6 cursor-pointer"
-                >
-                  <span className="absolute top-5 right-5 font-mono text-[11px] text-white/0
-                                   group-hover:text-white/30 transition-colors duration-200">
-                    →
-                  </span>
+              <AnimatePresence>
+                {myOrgs.map((org, i) => (
+                  <motion.div
+                    key={org.id}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.97 }}
+                    transition={{ duration: 0.35, delay: i * 0.04 }}
+                    onClick={() => navigate(`/org/${org.slug}`)}
+                    className="group relative bg-white/[0.015] hover:bg-white/[0.04]
+                               transition-colors duration-200 p-6 cursor-pointer"
+                  >
+                    <span className="absolute top-5 right-5 font-mono text-[11px] text-white/0
+                                     group-hover:text-white/30 transition-colors duration-200">
+                      →
+                    </span>
 
-                  <div className="flex items-start gap-3 mb-5">
-                    <OrgInitial name={org.name} />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-[15px] font-light truncate mb-1">{org.name}</p>
-                      <RolePill role={org.role!} />
+                    <div className="flex items-start gap-3 mb-5">
+                      <OrgInitial name={org.name} />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[15px] font-light truncate mb-1">{org.name}</p>
+                        <RolePill role={org.role!} />
+                      </div>
                     </div>
-                  </div>
 
-                  <div className="flex items-center gap-5 pt-4 border-t border-white/[0.06]">
-                    <div>
-                      <p className="text-base font-light">{org.sources}</p>
-                      <p className="font-mono text-[9px] tracking-widest uppercase text-white/25">Sources</p>
+                    <div className="flex items-center gap-5 pt-4 border-t border-white/[0.06]">
+                      <div>
+                        <p className="text-base font-light">{org.sources ?? 0}</p>
+                        <p className="font-mono text-[9px] tracking-widest uppercase text-white/25">Sources</p>
+                      </div>
+                      <div className="w-px h-6 bg-white/[0.06]" />
+                      <div>
+                        <p className="text-base font-light">{org.mcpServers ?? 0}</p>
+                        <p className="font-mono text-[9px] tracking-widest uppercase text-white/25">MCP Servers</p>
+                      </div>
+                      <div className="w-px h-6 bg-white/[0.06]" />
+                      <div>
+                        <p className="text-base font-light">{org.memberCount}</p>
+                        <p className="font-mono text-[9px] tracking-widest uppercase text-white/25">Members</p>
+                      </div>
                     </div>
-                    <div className="w-px h-6 bg-white/[0.06]" />
-                    <div>
-                      <p className="text-base font-light">{org.mcpServers}</p>
-                      <p className="font-mono text-[9px] tracking-widest uppercase text-white/25">MCP Servers</p>
-                    </div>
-                    <div className="w-px h-6 bg-white/[0.06]" />
-                    <div>
-                      <p className="text-base font-light">{org.memberCount}</p>
-                      <p className="font-mono text-[9px] tracking-widest uppercase text-white/25">Members</p>
-                    </div>
-                  </div>
-                </motion.div>
-              ))}
+                  </motion.div>
+                ))}
+              </AnimatePresence>
 
               {/* Create new — ghost card */}
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.35, delay: 0.1 + myOrgs.length * 0.06 }}
+                transition={{ duration: 0.35, delay: 0.1 + myOrgs.length * 0.04 }}
                 onClick={() => setShowCreate(true)}
                 className="group bg-white/[0.01] hover:bg-white/[0.03] transition-colors duration-200
                            p-6 cursor-pointer flex flex-col items-center justify-center gap-3
@@ -723,7 +816,12 @@ export default function Organizations() {
 
       {/* ── Create org modal ── */}
       <AnimatePresence>
-        {showCreate && <CreateOrgModal onClose={() => setShowCreate(false)} />}
+        {showCreate && (
+          <CreateOrgModal
+            onClose={() => setShowCreate(false)}
+            onCreated={handleOrgCreated}
+          />
+        )}
       </AnimatePresence>
     </div>
   );
