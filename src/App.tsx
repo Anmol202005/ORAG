@@ -4,19 +4,32 @@ import Dashboard from "./pages/Dashboard";
 import Auth from "./pages/Auth";
 import Landing from "./pages/Landing";
 import Organizations from "./pages/Organizations";
+import ProtectedRoute from "./components/ProtectedRoute";
 
 export default function App() {
   return (
-    <div
-      style={{ minHeight: "100vh", backgroundColor: "#0a0a0a", color: "white" }}
-    >
+    <div style={{ minHeight: "100vh", backgroundColor: "#0a0a0a", color: "white" }}>
       <GoogleOAuthProvider clientId={import.meta.env.VITE_GOOGLE_CLIENT_ID}>
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<Landing />} />
             <Route path="/auth" element={<Auth />} />
-            <Route path="/organizations" element={<Organizations />} />
-            <Route path="/dashboard" element={<Dashboard />} />
+            <Route
+              path="/organizations"
+              element={
+                <ProtectedRoute>
+                  <Organizations />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/dashboard"
+              element={
+                <ProtectedRoute>
+                  <Dashboard />
+                </ProtectedRoute>
+              }
+            />
           </Routes>
         </BrowserRouter>
       </GoogleOAuthProvider>

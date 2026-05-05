@@ -144,7 +144,7 @@ export default function Landing() {
         transition={{ duration: 0.4 }}
         className={`fixed top-0 left-0 right-0 z-50 flex items-center justify-between
                     px-8 md:px-20 lg:px-32 py-5 transition-all duration-300
-                    ${scrolled ? "border-b border-white/[0.07] bg-[#0a0a0a]/80 backdrop-blur-md" : ""}`}
+                    ${scrolled ? " bg-[#0a0a0a]/80 backdrop-blur-md" : ""}`}
       >
         {/* Logo */}
         <div className="flex items-center gap-2.5">
