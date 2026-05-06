@@ -57,9 +57,20 @@ async function apiFetchOrg(slug: string): Promise<OrgState> {
     headers: getAuthHeaders(),
     credentials: "include",
   });
+  
+  const text = await res.text();
+  console.log("apiFetchOrg raw response:", text.slice(0, 200));
+  console.log("apiFetchOrg status:", res.status);
+  console.log("apiFetchOrg content-type:", res.headers.get("content-type"));
+  
   if (!res.ok) throw new Error(`/api/orgs/${slug} ${res.status}`);
-  const data = await res.json();
-  return data.org as OrgState;
+  
+  try {
+    const data = JSON.parse(text);
+    return data.org as OrgState;
+  } catch {
+    throw new Error(`JSON parse failed. Got: ${text.slice(0, 100)}`);
+  }
 }
 
 async function apiFetchFiles(slug: string): Promise<FileNode[]> {
