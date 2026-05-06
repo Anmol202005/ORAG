@@ -148,13 +148,14 @@ async function apiChatStream(
   onToken: (token: string) => void,
   slug: string, // ← was orgId, now slug for the URL
   orgId: string, // ← still needed for the body
+  docIds: string[],
 ): Promise<string> {
   const res = await fetch(`/api/orgs/${slug}/agent`, {
     // ← new endpoint
     method: "POST",
     headers: getAuthHeaders(),
     credentials: "include",
-    body: JSON.stringify({ messages, org_id: orgId }), // ← org_id not orgId
+    body: JSON.stringify({ messages, org_id: orgId, doc_ids: docIds }), // ← org_id not orgId
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
@@ -942,6 +943,7 @@ export default function Workspace() {
     (n) => n.type === "file" && n.checked,
   );
   const activeContextNames = activeContextFiles.map((n) => n.name);
+  const activeContextIds = activeContextFiles.map((n) => n.id);
 
   const sendMessage = async () => {
     const val = input.trim();
@@ -987,11 +989,13 @@ export default function Workspace() {
           setMessages((prev) =>
             prev.map((m) =>
               m.id === aiId ? { ...m, content: m.content + token } : m,
+              
             ),
           );
         },
         org.slug, // ← for the URL
         org.orgId, // ← for the body
+        activeContextIds,
       );
 
       setChatLoading(false);

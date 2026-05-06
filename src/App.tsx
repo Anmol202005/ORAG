@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { GoogleOAuthProvider } from "@react-oauth/google";
-import Dashboard from "./pages/Dashboard";
+import Dashboard from "./pages/Workspace";
 import Auth from "./pages/Auth";
 import Landing from "./pages/Landing";
 import Organizations from "./pages/Organizations";

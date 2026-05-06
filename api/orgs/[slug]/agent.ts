@@ -13,7 +13,7 @@ dotenv.config({ path: "./.env" });
 export const dynamic = "force-dynamic";
 
 const ddb = DynamoDBDocumentClient.from(
-  new DynamoDBClient({ region: process.env.AWS_REGION ?? "us-east-1" })
+  new DynamoDBClient({ region: process.env.AWS_REGION ?? "us-east-1" }),
 );
 const TABLE = process.env.TABLE_NAME!;
 
@@ -26,7 +26,8 @@ interface ChatMessage {
 
 interface AgentRequestBody {
   messages: ChatMessage[];
-  org_id: string;          // required — scopes the agent to the user's org
+  org_id: string; // required — scopes the agent to the user's org
+  doc_ids?: string[];
   systemPrompt?: string;
 }
 
@@ -34,7 +35,7 @@ interface AgentRequestBody {
 
 async function authenticate(
   request: Request,
-  orgId: string
+  orgId: string,
 ): Promise<{ error: string; status: number } | null> {
   // 1. Extract Bearer token
   const authHeader = request.headers.get("authorization") ?? "";
@@ -51,7 +52,8 @@ async function authenticate(
     userId = user.userId;
   } catch (err) {
     const name = (err as Error).name;
-    if (name === "TokenExpiredError") return { error: "Token expired", status: 401 };
+    if (name === "TokenExpiredError")
+      return { error: "Token expired", status: 401 };
     return { error: "Invalid token", status: 401 };
   }
 
@@ -60,7 +62,7 @@ async function authenticate(
     new GetCommand({
       TableName: TABLE,
       Key: { pk: `USER#${userId}`, sk: `MEMBER#${orgId}` },
-    })
+    }),
   );
 
   if (!memberRecord.Item) {
@@ -87,7 +89,10 @@ function sse(payload: Record<string, unknown>): Uint8Array {
   return new TextEncoder().encode(`data: ${JSON.stringify(payload)}\n\n`);
 }
 
-function parseMessages(messages: ChatMessage[]): {
+function parseMessages(
+  messages: ChatMessage[],
+  doc_ids?: string[],
+): {
   systemContent: string;
   chatHistory: BaseMessage[];
   input: string;
@@ -95,12 +100,16 @@ function parseMessages(messages: ChatMessage[]): {
   const systemMsgs = messages.filter((m) => m.role === "system");
   const nonSystem = messages.filter((m) => m.role !== "system");
 
+  const docScopeNote = doc_ids?.length
+    ? `\nThe user has scoped this search to the following document IDs: [${doc_ids.join(", ")}].\nAlways pass these doc_ids when calling searchDocument.`
+    : "";
+
   const systemContent =
-    systemMsgs.map((m) => m.content).join("\n") ||
-    `You are a helpful AI assistant with access to a Pinecone knowledge base.
+    systemMsgs.map((m) => m.content).join("\n") +
+    `\nYou are a helpful AI assistant with access to a Pinecone knowledge base.
 Always call searchDocument first when the user asks a factual question.
 If no relevant results are found, say so clearly.
-Today is ${new Date().toISOString().slice(0, 10)}.`;
+Today is ${new Date().toISOString().slice(0, 10)}.${docScopeNote}`;
 
   const last = nonSystem.at(-1);
   const input = last?.role === "user" ? last.content : "";
@@ -108,7 +117,9 @@ Today is ${new Date().toISOString().slice(0, 10)}.`;
   const chatHistory: BaseMessage[] = nonSystem
     .slice(0, -1)
     .map((m) =>
-      m.role === "user" ? new HumanMessage(m.content) : new AIMessage(m.content)
+      m.role === "user"
+        ? new HumanMessage(m.content)
+        : new AIMessage(m.content),
     );
 
   return { systemContent, chatHistory, input };
@@ -129,10 +140,19 @@ export default {
       return Response.json({ error: "Invalid JSON body" }, { status: 400 });
     }
 
-    const { messages, org_id, systemPrompt: systemOverride } = body;
+    const { messages, org_id, doc_ids, systemPrompt: systemOverride } = body;
+    console.log("[agent] request body:", {
+      messages,
+      org_id,
+      doc_ids,
+      systemOverride,
+    });
 
     if (!messages?.length) {
-      return Response.json({ error: "'messages' array required" }, { status: 400 });
+      return Response.json(
+        { error: "'messages' array required" },
+        { status: 400 },
+      );
     }
 
     if (!org_id?.trim()) {
@@ -144,7 +164,10 @@ export default {
     // ── Auth + membership check before streaming ──────────────────────────────
     const authError = await authenticate(request, orgId);
     if (authError) {
-      return Response.json({ error: authError.error }, { status: authError.status });
+      return Response.json(
+        { error: authError.error },
+        { status: authError.status },
+      );
     }
 
     // ── Verified — start streaming ────────────────────────────────────────────
@@ -177,10 +200,21 @@ export default {
             ? [{ role: "system", content: systemOverride }, ...messages]
             : messages;
 
-          const { systemContent, chatHistory, input } = parseMessages(allMessages);
+          const { systemContent, chatHistory, input } = parseMessages(
+            allMessages,
+            doc_ids,
+          );
+          console.log("[agent] parsed messages:", {
+            systemContent,
+            chatHistory,
+            input,
+          });
 
           if (!input) {
-            send({ type: "error", message: "Last message must be from the user." });
+            send({
+              type: "error",
+              message: "Last message must be from the user.",
+            });
             controller.close();
             return;
           }
@@ -201,7 +235,7 @@ export default {
 
           const agentStream = await agent.stream(
             { messages: agentMessages },
-            { streamMode: "messages" }
+            { streamMode: "messages" },
           );
 
           for await (const [chunk, metadata] of agentStream) {
@@ -236,7 +270,10 @@ export default {
           send({ type: "done" });
         } catch (err: any) {
           console.error("[agent] error:", err);
-          send({ type: "error", message: err?.message ?? "Internal server error" });
+          send({
+            type: "error",
+            message: err?.message ?? "Internal server error",
+          });
         } finally {
           if (mcpClient) await mcpClient.close().catch(() => {});
           controller.close();
