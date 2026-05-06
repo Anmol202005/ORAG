@@ -1,3 +1,4 @@
+// api/orgs/[slug]/mcp.ts
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { Pinecone } from "@pinecone-database/pinecone";
@@ -16,7 +17,7 @@ const index = pc.index({ name: process.env.PINECONE_INDEX_NAME! });
 const ddb = DynamoDBDocumentClient.from(
   new DynamoDBClient({ region: process.env.AWS_REGION ?? "us-east-1" })
 );
-const TABLE = process.env.DYNAMO_TABLE_NAME!;
+const TABLE = process.env.TABLE_NAME!;
 
 // ── Auth + membership guard ───────────────────────────────────────────────────
 

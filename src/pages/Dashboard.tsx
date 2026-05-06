@@ -146,19 +146,24 @@ function buildSystemMessage(fileNames: string[], webSearch: boolean): string {
 async function apiChatStream(
   messages: AgentMessage[],
   onToken: (token: string) => void,
-  orgId: string,
+  slug: string, // ← was orgId, now slug for the URL
+  orgId: string, // ← still needed for the body
 ): Promise<string> {
-  const res = await fetch("/api/agent", {
+  const res = await fetch(`/api/orgs/${slug}/agent`, {
+    // ← new endpoint
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ messages, orgId }),
+    headers: getAuthHeaders(),
+    credentials: "include",
+    body: JSON.stringify({ messages, org_id: orgId }), // ← org_id not orgId
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(`/api/agent ${res.status}${text ? `: ${text}` : ""}`);
+    throw new Error(
+      `/api/orgs/${slug}/agent ${res.status}${text ? `: ${text}` : ""}`,
+    );
   }
   const reader = res.body?.getReader();
-  if (!reader) throw new Error("No response body from /api/agent");
+  if (!reader) throw new Error("No response body from agent");
   const decoder = new TextDecoder();
   let full = "";
   let buffer = "";
@@ -179,8 +184,13 @@ async function apiChatStream(
           full += evt.content;
           onToken(evt.content);
         }
-      } catch {
-        /* skip */
+        // Surface agent errors as thrown exceptions
+        if (evt.type === "error") {
+          throw new Error(evt.message ?? "Agent error");
+        }
+      } catch (e) {
+        // Re-throw real errors, skip malformed JSON
+        if (e instanceof Error && e.message !== "Unexpected token") throw e;
       }
     }
   }
@@ -980,7 +990,8 @@ export default function Workspace() {
             ),
           );
         },
-        org.orgId,
+        org.slug, // ← for the URL
+        org.orgId, // ← for the body
       );
 
       setChatLoading(false);

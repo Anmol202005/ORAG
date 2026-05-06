@@ -1,3 +1,4 @@
+// api/orgs/[slug]/agent.ts
 import { ChatOpenAI } from "@langchain/openai";
 import { HumanMessage, AIMessage, BaseMessage } from "@langchain/core/messages";
 import { MultiServerMCPClient } from "@langchain/mcp-adapters";
@@ -14,7 +15,7 @@ export const dynamic = "force-dynamic";
 const ddb = DynamoDBDocumentClient.from(
   new DynamoDBClient({ region: process.env.AWS_REGION ?? "us-east-1" })
 );
-const TABLE = process.env.DYNAMO_TABLE_NAME!;
+const TABLE = process.env.TABLE_NAME!;
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -73,11 +74,12 @@ async function authenticate(
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function getMcpUrl(request: Request, orgId: string): string {
-  // Pass org_id as query param so MCP server can scope searches to this org
-  const base = process.env.MCP_SERVER_URL
-    ? process.env.MCP_SERVER_URL
-    : `${new URL(request.url).protocol}//${new URL(request.url).host}/api/mcp`;
-
+  if (process.env.MCP_SERVER_URL) {
+    return `${process.env.MCP_SERVER_URL}?org_id=${encodeURIComponent(orgId)}`;
+  }
+  const url = new URL(request.url);
+  const slug = url.pathname.split("/")[3]; // /api/orgs/[slug]/agent → slug
+  const base = `${url.protocol}//${url.host}/api/orgs/${slug}/mcp`;
   return `${base}?org_id=${encodeURIComponent(orgId)}`;
 }
 
