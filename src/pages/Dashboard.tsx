@@ -101,19 +101,32 @@ async function apiFetchFiles(slug: string): Promise<FileNode[]> {
   ];
 }
 
-async function apiUploadFile(file: File): Promise<FileNode> {
+async function apiUploadFile(file: File, slug: string): Promise<FileNode> {
   const form = new FormData();
   form.append("file", file);
-  const res = await fetch("/api/upload", { method: "POST", body: form });
-  if (!res.ok) throw new Error(`/api/upload ${res.status}`);
+
+  // Don't set Content-Type manually — browser sets multipart boundary automatically
+  const headers = getAuthHeaders() as Record<string, string>;
+  delete headers["Content-Type"];
+
+  const res = await fetch(`/api/orgs/${slug}/uploadFile`, {
+    method: "POST",
+    headers,
+    credentials: "include",
+    body: form,
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Upload failed ${res.status}${text ? `: ${text}` : ""}`);
+  }
   const data = await res.json();
+  // Map the response shape to FileNode
   return {
-    id: data.id,
+    id: data.docId,
     type: "file",
-    name: data.name ?? file.name,
-    ext: data.ext ?? file.name.split(".").pop(),
+    name: data.file,
+    ext: data.file.includes(".") ? data.file.split(".").pop() : undefined,
     checked: false,
-    url: data.url,
   };
 }
 
@@ -898,19 +911,13 @@ export default function Workspace() {
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file || !org) return;
     setUploadLoading(true);
     try {
-      const newNode = await apiUploadFile(file);
-      setSources((prev) => {
-        const updated = [...prev];
-        const firstFolder = updated.find((n) => n.type === "folder");
-        if (firstFolder) {
-          firstFolder.children = [...(firstFolder.children ?? []), newNode];
-          firstFolder.open = true;
-        } else updated.push(newNode);
-        return updated;
-      });
+      await apiUploadFile(file, org.slug);
+      // Refetch the full list — avoids duplicate optimistic insert
+      const tree = await apiFetchFiles(org.slug);
+      setSources(tree);
     } catch (err: unknown) {
       alert(
         `Upload failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -1076,7 +1083,7 @@ export default function Workspace() {
         ref={fileInputRef}
         type="file"
         className="hidden"
-        accept=".pdf,.md,.txt,.docx,.csv"
+        accept=".pdf,.docx,.md,.txt,.csv,.json,.ts,.tsx,.js,.jsx,.py"
         onChange={handleFileChange}
       />
 

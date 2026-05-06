@@ -26,6 +26,7 @@
     "dotenv": "^16.6.1",
     "express": "^5.2.1",
     "fetch-to-node": "^2.1.0",
+    "formidable": "^3.5.4",
     "framer-motion": "^12.38.0",
     "google-auth-library": "^10.6.2",
     "jsonwebtoken": "^9.0.3",
@@ -42,6 +43,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@types/formidable": "^3.5.1",
     "@types/google.accounts": "^0.0.18",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^24.12.2",

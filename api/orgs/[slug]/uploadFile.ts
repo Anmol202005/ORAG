@@ -5,6 +5,9 @@ import { PutCommand } from "@aws-sdk/lib-dynamodb";
 import { docClient } from "../../../lib/dynamo";
 import { PDFParse } from "pdf-parse";
 import { randomUUID } from "crypto";
+import formidable from "formidable"; // ← add
+import fs from "fs";
+import dotenv from "dotenv";
 import {
   compose,
   withCors,
@@ -13,9 +16,12 @@ import {
   type AuthenticatedRequest,
 } from "../../../lib/middleware";
 
+export const config = { api: { bodyParser: false } };
+dotenv.config({ path: "./.env" });
+
 const pc = new Pinecone({ apiKey: process.env.PINECONE_API_KEY! });
 const index = pc.index({ name: process.env.PINECONE_INDEX_NAME! });
-const TABLE = process.env.DYNAMO_TABLE_NAME!;
+const TABLE = process.env.TABLE_NAME!;
 
 // ── Helpers (unchanged) ───────────────────────────────────────────────────────
 
@@ -28,7 +34,7 @@ async function extractText(file: File): Promise<string> {
   if (
     mime.startsWith("text/") ||
     [".md", ".json", ".csv", ".ts", ".tsx", ".js", ".jsx", ".py", ".txt"].some(
-      (ext) => name.endsWith(ext)
+      (ext) => name.endsWith(ext),
     )
   ) {
     return buffer.toString("utf-8");
@@ -45,7 +51,8 @@ async function extractText(file: File): Promise<string> {
   }
 
   if (
-    mime === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+    mime ===
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
     name.endsWith(".docx")
   ) {
     const mammoth = await import("mammoth");
@@ -71,7 +78,7 @@ async function createDocumentRecord(
   docId: string,
   docName: string,
   orgId: string,
-  totalChunks: number
+  totalChunks: number,
 ) {
   await docClient.send(
     new PutCommand({
@@ -87,7 +94,7 @@ async function createDocumentRecord(
         entityType: "DOCUMENT",
       },
       ConditionExpression: "attribute_not_exists(pk)",
-    })
+    }),
   );
 }
 
@@ -102,14 +109,23 @@ const handler = async (req: AuthenticatedRequest, res: VercelResponse) => {
   const { orgId } = req.orgMember!;
 
   // Vercel parses multipart automatically when Content-Type is multipart/form-data
-  const file = req.body?.file as File | undefined;
-  if (!file) {
+  const form = formidable({ maxFileSize: 20 * 1024 * 1024 });
+  const [, files] = await form.parse(req as any);
+  const uploaded = files.file?.[0];
+  if (!uploaded) {
     return res.status(400).json({ error: "No file provided" });
   }
 
+  const buffer = fs.readFileSync(uploaded.filepath);
+  const file = new File([buffer], uploaded.originalFilename ?? "upload", {
+    type: uploaded.mimetype ?? "application/octet-stream",
+  });
+
   const rawText = await extractText(file);
   if (!rawText.trim()) {
-    return res.status(422).json({ error: "Could not extract any text from the file" });
+    return res
+      .status(422)
+      .json({ error: "Could not extract any text from the file" });
   }
 
   const chunks = chunkText(rawText);
@@ -146,5 +162,5 @@ const handler = async (req: AuthenticatedRequest, res: VercelResponse) => {
 export default compose(
   withCors,
   withAuth,
-  withOrgMember(["owner", "admin"]) // only owner/admin can upload docs
+  withOrgMember(["owner", "admin"]), // only owner/admin can upload docs
 )(handler);
