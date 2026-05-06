@@ -341,8 +341,11 @@ export default function Organizations() {
   const navigate = useNavigate();
   const [showCreate, setShowCreate] = useState(false);
   const [search, setSearch] = useState("");
+
+  // ── Join state ──
   const [joining, setJoining] = useState<string | null>(null);
   const [joined, setJoined] = useState<Set<string>>(new Set());
+  const [joinErrors, setJoinErrors] = useState<Record<string, string>>({});
 
   // ── User state ──
   const [user, setUser] = useState<Me | null>(null);
@@ -358,6 +361,13 @@ export default function Organizations() {
   const [publicOrgs, setPublicOrgs] = useState<Org[]>([]);
   const [publicOrgsLoading, setPublicOrgsLoading] = useState(true);
   const [publicOrgsError, setPublicOrgsError] = useState<string | null>(null);
+
+  // ── Sync joined set with myOrgs so already-member orgs show "Joined" in public list ──
+  useEffect(() => {
+    if (myOrgs.length > 0) {
+      setJoined((prev) => new Set([...prev, ...myOrgs.map((o) => o.id)]));
+    }
+  }, [myOrgs]);
 
   // ── Fetch current user ──
   useEffect(() => {
@@ -439,7 +449,9 @@ export default function Organizations() {
         const data = await res.json();
         setPublicOrgs(data.orgs);
       } catch (err) {
-        setPublicOrgsError(err instanceof Error ? err.message : "Failed to load public organizations");
+        setPublicOrgsError(
+          err instanceof Error ? err.message : "Failed to load public organizations"
+        );
       } finally {
         setPublicOrgsLoading(false);
       }
@@ -453,7 +465,7 @@ export default function Organizations() {
     setMyOrgs((prev) => [newOrg, ...prev]);
   };
 
-  // ── Search is now handled server-side; filter client-side as fallback ──
+  // ── Filter public orgs client-side ──
   const filteredPublic = publicOrgs.filter(
     (o) =>
       o.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -461,11 +473,53 @@ export default function Organizations() {
       o.tags?.some((t) => t.toLowerCase().includes(search.toLowerCase()))
   );
 
+  // ── Join organization ──
   const handleJoin = async (id: string) => {
     setJoining(id);
-    await new Promise((r) => setTimeout(r, 900));
-    setJoined((prev) => new Set([...prev, id]));
-    setJoining(null);
+    setJoinErrors((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+
+    const token = localStorage.getItem("auth_token");
+
+    try {
+      const res = await fetch(`/api/orgs/join?id=${id}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        // 409 = already a member — treat as success silently
+        if (res.status === 409) {
+          setJoined((prev) => new Set([...prev, id]));
+          return;
+        }
+        throw new Error(data.error ?? `Request failed: ${res.status}`);
+      }
+
+      setJoined((prev) => new Set([...prev, id]));
+
+      // Optimistically increment member count in the list
+      setPublicOrgs((prev) =>
+        prev.map((o) =>
+          o.id === id ? { ...o, memberCount: o.memberCount + 1 } : o
+        )
+      );
+    } catch (err) {
+      setJoinErrors((prev) => ({
+        ...prev,
+        [id]: err instanceof Error ? err.message : "Failed to join",
+      }));
+    } finally {
+      setJoining(null);
+    }
   };
 
   return (
@@ -806,10 +860,13 @@ export default function Organizations() {
                           </p>
                         </div>
 
-                        <div className="shrink-0">
+                        {/* ── Join / Joined button + per-org error ── */}
+                        <div className="shrink-0 flex flex-col items-end gap-1.5">
                           {isJoined ? (
-                            <span className="font-mono text-[10px] tracking-widest uppercase
-                                             text-white/30 border border-white/[0.08] px-3 py-1.5 rounded">
+                            <span
+                              className="font-mono text-[10px] tracking-widest uppercase
+                                         text-white/30 border border-white/[0.08] px-3 py-1.5 rounded"
+                            >
                               ✓ Joined
                             </span>
                           ) : (
@@ -833,6 +890,21 @@ export default function Organizations() {
                               )}
                             </button>
                           )}
+
+                          <AnimatePresence>
+                            {joinErrors[org.id] && (
+                              <motion.p
+                                initial={{ opacity: 0, y: -4 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: -4 }}
+                                transition={{ duration: 0.2 }}
+                                className="font-mono text-[9px] text-red-400/60 tracking-wider
+                                           max-w-[120px] text-right leading-relaxed"
+                              >
+                                {joinErrors[org.id]}
+                              </motion.p>
+                            )}
+                          </AnimatePresence>
                         </div>
                       </motion.div>
                     );
