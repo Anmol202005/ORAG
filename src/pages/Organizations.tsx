@@ -24,46 +24,6 @@ interface Me {
   createdAt: string;
 }
 
-// ── Public org mock data (replace with real API when ready) ───────────────────
-const PUBLIC_ORGS: Org[] = [
-  {
-    id: "4",
-    name: "Open Research Collective",
-    slug: "open-research",
-    memberCount: 312,
-    isPublic: true,
-    description: "A public org for AI researchers sharing RAG pipelines and open datasets.",
-    tags: ["Research", "Open Source"],
-  },
-  {
-    id: "5",
-    name: "DevTools Community",
-    slug: "devtools-community",
-    memberCount: 1840,
-    isPublic: true,
-    description: "Community-maintained MCP servers and connectors for popular dev tools.",
-    tags: ["Developer Tools", "MCP"],
-  },
-  {
-    id: "6",
-    name: "LegalTech Alliance",
-    slug: "legaltech",
-    memberCount: 97,
-    isPublic: true,
-    description: "Shared knowledge bases and retrieval configs for legal professionals.",
-    tags: ["Legal", "Enterprise"],
-  },
-  {
-    id: "7",
-    name: "Healthcare AI Hub",
-    slug: "healthcare-ai",
-    memberCount: 203,
-    isPublic: true,
-    description: "Secure pipelines and compliant MCP servers for healthcare organizations.",
-    tags: ["Healthcare", "Compliance"],
-  },
-];
-
 // ── Sub-components ────────────────────────────────────────────────────────────
 
 function OrgInitial({ name }: { name: string }) {
@@ -177,11 +137,9 @@ function CreateOrgModal({ onClose, onCreated }: CreateOrgModalProps) {
       const data = await res.json();
 
       if (!res.ok) {
-        // Surface exact error from API (e.g. "slug is already taken", validation errors)
         throw new Error(data.error ?? `Request failed: ${res.status}`);
       }
 
-      // data.org matches the shape returned by api/orgs/index.ts
       onCreated({
         id: data.org.id,
         name: data.org.name,
@@ -191,7 +149,7 @@ function CreateOrgModal({ onClose, onCreated }: CreateOrgModalProps) {
         memberCount: data.org.memberCount,
         sources: data.org.sources,
         mcpServers: data.org.mcpServers,
-        role: data.org.role, // "owner"
+        role: data.org.role,
       });
 
       onClose();
@@ -327,7 +285,6 @@ function CreateOrgModal({ onClose, onCreated }: CreateOrgModalProps) {
           </label>
         </div>
 
-        {/* ── API error banner ── */}
         <AnimatePresence>
           {error && (
             <motion.div
@@ -397,6 +354,11 @@ export default function Organizations() {
   const [orgsLoading, setOrgsLoading] = useState(true);
   const [orgsError, setOrgsError] = useState<string | null>(null);
 
+  // ── Public orgs state ──
+  const [publicOrgs, setPublicOrgs] = useState<Org[]>([]);
+  const [publicOrgsLoading, setPublicOrgsLoading] = useState(true);
+  const [publicOrgsError, setPublicOrgsError] = useState<string | null>(null);
+
   // ── Fetch current user ──
   useEffect(() => {
     const fetchMe = async () => {
@@ -461,12 +423,38 @@ export default function Organizations() {
     fetchMyOrgs();
   }, [navigate]);
 
+  // ── Fetch public organizations ──
+  useEffect(() => {
+    const fetchPublicOrgs = async () => {
+      try {
+        const token = localStorage.getItem("auth_token");
+        const headers: Record<string, string> = {};
+        if (token) headers["Authorization"] = `Bearer ${token}`;
+
+        const res = await fetch("/api/orgs/public", { headers });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error ?? `Request failed: ${res.status}`);
+        }
+        const data = await res.json();
+        setPublicOrgs(data.orgs);
+      } catch (err) {
+        setPublicOrgsError(err instanceof Error ? err.message : "Failed to load public organizations");
+      } finally {
+        setPublicOrgsLoading(false);
+      }
+    };
+
+    fetchPublicOrgs();
+  }, []);
+
   // ── Prepend newly created org to the list ──
   const handleOrgCreated = (newOrg: Org) => {
     setMyOrgs((prev) => [newOrg, ...prev]);
   };
 
-  const filteredPublic = PUBLIC_ORGS.filter(
+  // ── Search is now handled server-side; filter client-side as fallback ──
+  const filteredPublic = publicOrgs.filter(
     (o) =>
       o.name.toLowerCase().includes(search.toLowerCase()) ||
       o.description?.toLowerCase().includes(search.toLowerCase()) ||
@@ -715,10 +703,12 @@ export default function Organizations() {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5">
             <p className="font-mono text-[10px] tracking-widest uppercase text-white/30">
               Discover public organizations
-              <span className="ml-2 font-mono text-[9px] text-white/20 bg-white/[0.05]
-                               border border-white/[0.07] px-1.5 py-0.5 rounded-full">
-                {PUBLIC_ORGS.length}
-              </span>
+              {!publicOrgsLoading && (
+                <span className="ml-2 font-mono text-[9px] text-white/20 bg-white/[0.05]
+                                 border border-white/[0.07] px-1.5 py-0.5 rounded-full">
+                  {filteredPublic.length}
+                </span>
+              )}
             </p>
 
             <div className="relative">
@@ -742,74 +732,114 @@ export default function Organizations() {
           </div>
 
           <div className="divide-y divide-white/[0.06] border border-white/[0.07] rounded-lg overflow-hidden">
-            <AnimatePresence>
-              {filteredPublic.length === 0 ? (
-                <p className="font-mono text-[11px] text-white/20 py-12 text-center tracking-widest">
-                  No organizations match your search
-                </p>
-              ) : (
-                filteredPublic.map((org, i) => {
-                  const isJoined = joined.has(org.id);
-                  const isJoining = joining === org.id;
-                  return (
+            {publicOrgsLoading ? (
+              <div className="divide-y divide-white/[0.06]">
+                {[0, 1, 2].map((i) => (
+                  <div key={i} className="flex items-center gap-5 px-6 py-5 bg-white/[0.01]">
                     <motion.div
-                      key={org.id}
-                      initial={{ opacity: 0, y: 8 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -6 }}
-                      transition={{ duration: 0.3, delay: i * 0.04 }}
-                      className="group flex items-center gap-5 px-6 py-5
-                                 bg-white/[0.01] hover:bg-white/[0.03]
-                                 transition-colors duration-150"
-                    >
-                      <OrgInitial name={org.name} />
+                      animate={{ opacity: [0.3, 0.6, 0.3] }}
+                      transition={{ repeat: Infinity, duration: 1.2, delay: i * 0.15 }}
+                      className="w-9 h-9 rounded-md bg-white/[0.07] shrink-0"
+                    />
+                    <div className="flex-1 space-y-2">
+                      <motion.div
+                        animate={{ opacity: [0.3, 0.6, 0.3] }}
+                        transition={{ repeat: Infinity, duration: 1.2, delay: i * 0.15 }}
+                        className="h-3.5 w-40 rounded bg-white/[0.07]"
+                      />
+                      <motion.div
+                        animate={{ opacity: [0.3, 0.6, 0.3] }}
+                        transition={{ repeat: Infinity, duration: 1.2, delay: i * 0.15 + 0.1 }}
+                        className="h-3 w-72 rounded bg-white/[0.05]"
+                      />
+                      <motion.div
+                        animate={{ opacity: [0.3, 0.6, 0.3] }}
+                        transition={{ repeat: Infinity, duration: 1.2, delay: i * 0.15 + 0.15 }}
+                        className="h-2.5 w-20 rounded bg-white/[0.04]"
+                      />
+                    </div>
+                    <motion.div
+                      animate={{ opacity: [0.3, 0.6, 0.3] }}
+                      transition={{ repeat: Infinity, duration: 1.2, delay: i * 0.15 }}
+                      className="h-7 w-16 rounded bg-white/[0.05] shrink-0"
+                    />
+                  </div>
+                ))}
+              </div>
+            ) : publicOrgsError ? (
+              <div className="px-6 py-10 text-center">
+                <p className="font-mono text-[11px] text-red-400/60 tracking-widest">{publicOrgsError}</p>
+              </div>
+            ) : (
+              <AnimatePresence>
+                {filteredPublic.length === 0 ? (
+                  <p className="font-mono text-[11px] text-white/20 py-12 text-center tracking-widest">
+                    {search ? "No organizations match your search" : "No public organizations yet"}
+                  </p>
+                ) : (
+                  filteredPublic.map((org, i) => {
+                    const isJoined = joined.has(org.id);
+                    const isJoining = joining === org.id;
+                    return (
+                      <motion.div
+                        key={org.id}
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -6 }}
+                        transition={{ duration: 0.3, delay: i * 0.04 }}
+                        className="group flex items-center gap-5 px-6 py-5
+                                   bg-white/[0.01] hover:bg-white/[0.03]
+                                   transition-colors duration-150"
+                      >
+                        <OrgInitial name={org.name} />
 
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2.5 mb-1 flex-wrap">
-                          <p className="text-[15px] font-light">{org.name}</p>
-                          {org.tags?.map((t) => <Tag key={t} label={t} />)}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2.5 mb-1 flex-wrap">
+                            <p className="text-[15px] font-light">{org.name}</p>
+                            {org.tags?.map((t) => <Tag key={t} label={t} />)}
+                          </div>
+                          <p className="text-xs font-light text-white/35 leading-relaxed mb-1.5 max-w-xl">
+                            {org.description}
+                          </p>
+                          <p className="font-mono text-[10px] text-white/20 tracking-wider">
+                            {org.memberCount.toLocaleString()} members
+                          </p>
                         </div>
-                        <p className="text-xs font-light text-white/35 leading-relaxed mb-1.5 max-w-xl">
-                          {org.description}
-                        </p>
-                        <p className="font-mono text-[10px] text-white/20 tracking-wider">
-                          {org.memberCount.toLocaleString()} members
-                        </p>
-                      </div>
 
-                      <div className="shrink-0">
-                        {isJoined ? (
-                          <span className="font-mono text-[10px] tracking-widest uppercase
-                                           text-white/30 border border-white/[0.08] px-3 py-1.5 rounded">
-                            ✓ Joined
-                          </span>
-                        ) : (
-                          <button
-                            onClick={() => handleJoin(org.id)}
-                            disabled={isJoining}
-                            className="font-mono text-[10px] tracking-widest uppercase
-                                       text-white/50 border border-white/[0.12] px-4 py-1.5 rounded
-                                       hover:bg-white/[0.07] hover:border-white/25 hover:text-white/80
-                                       transition-all duration-150 disabled:opacity-40 min-w-[80px]"
-                          >
-                            {isJoining ? (
-                              <motion.span
-                                animate={{ opacity: [1, 0.3, 1] }}
-                                transition={{ repeat: Infinity, duration: 0.9 }}
-                              >
-                                …
-                              </motion.span>
-                            ) : (
-                              "Join →"
-                            )}
-                          </button>
-                        )}
-                      </div>
-                    </motion.div>
-                  );
-                })
-              )}
-            </AnimatePresence>
+                        <div className="shrink-0">
+                          {isJoined ? (
+                            <span className="font-mono text-[10px] tracking-widest uppercase
+                                             text-white/30 border border-white/[0.08] px-3 py-1.5 rounded">
+                              ✓ Joined
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => handleJoin(org.id)}
+                              disabled={isJoining}
+                              className="font-mono text-[10px] tracking-widest uppercase
+                                         text-white/50 border border-white/[0.12] px-4 py-1.5 rounded
+                                         hover:bg-white/[0.07] hover:border-white/25 hover:text-white/80
+                                         transition-all duration-150 disabled:opacity-40 min-w-[80px]"
+                            >
+                              {isJoining ? (
+                                <motion.span
+                                  animate={{ opacity: [1, 0.3, 1] }}
+                                  transition={{ repeat: Infinity, duration: 0.9 }}
+                                >
+                                  …
+                                </motion.span>
+                              ) : (
+                                "Join →"
+                              )}
+                            </button>
+                          )}
+                        </div>
+                      </motion.div>
+                    );
+                  })
+                )}
+              </AnimatePresence>
+            )}
           </div>
         </motion.section>
       </main>
