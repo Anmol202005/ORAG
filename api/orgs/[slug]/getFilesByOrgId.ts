@@ -1,7 +1,7 @@
 // api/orgs/[slug]/getFilesByOrgId.ts
 import type { VercelResponse } from "@vercel/node";
 import { QueryCommand } from "@aws-sdk/lib-dynamodb";
-import { docClient } from "../../../lib/dynamo";
+import { docClient } from "../../../lib/dynamo.js";
 import dotenv from "dotenv";
 import {
   compose,
@@ -9,7 +9,7 @@ import {
   withAuth,
   withOrgMember,
   type AuthenticatedRequest,
-} from "../../../lib/middleware";
+} from "../../../lib/middleware.js";
 
 dotenv.config({ path: "./.env" });
 const TABLE = process.env.TABLE_NAME!;

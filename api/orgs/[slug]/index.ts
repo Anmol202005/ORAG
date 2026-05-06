@@ -9,7 +9,7 @@ import {
   withAuth,
   withOrgMember,
   type AuthenticatedRequest,
-} from "../../../lib/middleware";
+} from "../../../lib/middleware.js";
 
 dotenv.config({ path: "./.env" });
 

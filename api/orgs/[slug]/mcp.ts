@@ -6,7 +6,7 @@ import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, GetCommand } from "@aws-sdk/lib-dynamodb";
 import { z } from "zod";
 import { toReqRes, toFetchResponse } from "fetch-to-node";
-import { verifyToken } from "../../../lib/middleware";
+import { verifyToken } from "../../../lib/middleware.js";
 import dotenv from "dotenv";
 
 dotenv.config({ path: "./.env" });

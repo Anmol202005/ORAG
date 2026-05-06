@@ -1,6 +1,6 @@
 import type { VercelResponse } from "@vercel/node";
 import { docClient } from "../../lib/dynamo.js";
-import { withAuth, withCors, compose, type AuthenticatedRequest } from "../../lib/middleware";
+import { withAuth, withCors, compose, type AuthenticatedRequest } from "../../lib/middleware.js";
 import { v4 as uuidv4 } from "uuid";
 import dotenv from "dotenv";
 dotenv.config({ path: "./.env" });

@@ -5,7 +5,7 @@ import { MultiServerMCPClient } from "@langchain/mcp-adapters";
 import { createAgent } from "langchain";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, GetCommand } from "@aws-sdk/lib-dynamodb";
-import { verifyToken } from "../../../lib/middleware";
+import { verifyToken } from "../../../lib/middleware.js";
 import dotenv from "dotenv";
 
 dotenv.config({ path: "./.env" });

@@ -2,7 +2,7 @@
 import type { VercelResponse } from "@vercel/node";
 import { Pinecone } from "@pinecone-database/pinecone";
 import { PutCommand } from "@aws-sdk/lib-dynamodb";
-import { docClient } from "../../../lib/dynamo";
+import { docClient } from "../../../lib/dynamo.js";
 import { PDFParse } from "pdf-parse";
 import { randomUUID } from "crypto";
 import formidable from "formidable"; // ← add
@@ -14,7 +14,7 @@ import {
   withAuth,
   withOrgMember,
   type AuthenticatedRequest,
-} from "../../../lib/middleware";
+} from "../../../lib/middleware.js";
 
 export const config = { api: { bodyParser: false } };
 dotenv.config({ path: "./.env" });

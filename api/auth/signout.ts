@@ -1,5 +1,5 @@
 import type { VercelResponse } from "@vercel/node";
-import { withAuth, withCors, compose, type AuthenticatedRequest } from "../../lib/middleware";
+import { withAuth, withCors, compose, type AuthenticatedRequest } from "../../lib/middleware.js";
 import dotenv from "dotenv";
 dotenv.config({ path: "./.env" });
 

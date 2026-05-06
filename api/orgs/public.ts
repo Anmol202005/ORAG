@@ -1,7 +1,7 @@
 import type { VercelResponse } from "@vercel/node";
 import { docClient } from "../../lib/dynamo.js";
 import { QueryCommand, ScanCommand } from "@aws-sdk/lib-dynamodb";
-import { withCors, withOptionalAuth, compose, type AuthenticatedRequest } from "../../lib/middleware";
+import { withCors, withOptionalAuth, compose, type AuthenticatedRequest } from "../../lib/middleware.js";
 import dotenv from "dotenv";
 dotenv.config({ path: "./.env" });
 
