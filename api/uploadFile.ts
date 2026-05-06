@@ -1,14 +1,23 @@
+// api/orgs/[slug]/docs/upload.ts
+import type { VercelResponse } from "@vercel/node";
 import { Pinecone } from "@pinecone-database/pinecone";
+import { PutCommand } from "@aws-sdk/lib-dynamodb";
+import { docClient } from "../lib/dynamo";
 import { PDFParse } from "pdf-parse";
-import dotenv from "dotenv";
+import { randomUUID } from "crypto";
+import {
+  compose,
+  withCors,
+  withAuth,
+  withOrgMember,
+  type AuthenticatedRequest,
+} from "../lib/middleware";
 
-dotenv.config({ path: "./.env" });
-    
 const pc = new Pinecone({ apiKey: process.env.PINECONE_API_KEY! });
+const index = pc.index({ name: process.env.PINECONE_INDEX_NAME! });
+const TABLE = process.env.DYNAMO_TABLE_NAME!;
 
-const index = pc.index({
-  name: process.env.PINECONE_INDEX_NAME!,
-});
+// ── Helpers (unchanged) ───────────────────────────────────────────────────────
 
 async function extractText(file: File): Promise<string> {
   const arrayBuffer = await file.arrayBuffer();
@@ -16,17 +25,15 @@ async function extractText(file: File): Promise<string> {
   const mime = file.type;
   const name = file.name.toLowerCase();
 
-  // Plain text / markdown / CSV / JSON / source code
   if (
     mime.startsWith("text/") ||
     [".md", ".json", ".csv", ".ts", ".tsx", ".js", ".jsx", ".py", ".txt"].some(
-      (ext) => name.endsWith(ext),
+      (ext) => name.endsWith(ext)
     )
   ) {
     return buffer.toString("utf-8");
   }
 
-  // PDF
   if (mime === "application/pdf" || name.endsWith(".pdf")) {
     const parser = new PDFParse({ data: buffer });
     try {
@@ -38,8 +45,7 @@ async function extractText(file: File): Promise<string> {
   }
 
   if (
-    mime ===
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+    mime === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
     name.endsWith(".docx")
   ) {
     const mammoth = await import("mammoth");
@@ -53,66 +59,92 @@ async function extractText(file: File): Promise<string> {
 function chunkText(text: string, chunkSize = 500, overlap = 100): string[] {
   const words = text.split(/\s+/).filter(Boolean);
   const chunks: string[] = [];
-
   for (let i = 0; i < words.length; i += chunkSize - overlap) {
     const chunk = words.slice(i, i + chunkSize).join(" ");
     if (chunk.trim()) chunks.push(chunk);
     if (i + chunkSize >= words.length) break;
   }
-
   return chunks;
 }
 
-export default {
-  async fetch(request: Request): Promise<Response> {
-    if (request.method !== "POST") {
-      return Response.json({ error: "Method not allowed" }, { status: 405 });
-    }
+async function createDocumentRecord(
+  docId: string,
+  docName: string,
+  orgId: string,
+  totalChunks: number
+) {
+  await docClient.send(
+    new PutCommand({
+      TableName: TABLE,
+      Item: {
+        pk: `ORG#${orgId}`,
+        sk: `DOC#${docId}`,
+        docId,
+        docName,
+        orgId,
+        totalChunks,
+        uploadedAt: new Date().toISOString(),
+        entityType: "DOCUMENT",
+      },
+      ConditionExpression: "attribute_not_exists(pk)",
+    })
+  );
+}
 
-    try {
-      const formData = await request.formData();
-      const file = formData.get("file") as File | null;
+// ── Handler ───────────────────────────────────────────────────────────────────
 
-      if (!file) {
-        return Response.json({ error: "No file provided" }, { status: 400 });
-      }
+const handler = async (req: AuthenticatedRequest, res: VercelResponse) => {
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Method not allowed" });
+  }
 
-      const rawText = await extractText(file);
+  // orgId is guaranteed and membership verified by withOrgMember
+  const { orgId } = req.orgMember!;
 
-      if (!rawText.trim()) {
-        return Response.json(
-          { error: "Could not extract any text from the file" },
-          { status: 422 },
-        );
-      }
+  // Vercel parses multipart automatically when Content-Type is multipart/form-data
+  const file = req.body?.file as File | undefined;
+  if (!file) {
+    return res.status(400).json({ error: "No file provided" });
+  }
 
-      const chunks = chunkText(rawText);
+  const rawText = await extractText(file);
+  if (!rawText.trim()) {
+    return res.status(422).json({ error: "Could not extract any text from the file" });
+  }
 
-      const timestamp = Date.now();
-      const safeFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+  const chunks = chunkText(rawText);
+  const docId = randomUUID();
+  const timestamp = Date.now();
+  const safeFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
 
-      const records = chunks.map((chunk, i) => ({
-        _id: `${safeFileName}-${timestamp}-chunk${i}`,
-        text: chunk,
-        source_file: file.name,
-        org_name: "demoOrg",
-        chunk_index: i,
-        total_chunks: chunks.length,
-        uploaded_at: new Date().toISOString(),
-      }));
+  // 1️⃣ Upsert chunks into Pinecone
+  const records = chunks.map((chunk, i) => ({
+    _id: `${orgId}-${safeFileName}-${timestamp}-chunk${i}`,
+    text: chunk,
+    source_file: file.name,
+    doc_id: docId,
+    org_id: orgId,
+    chunk_index: i,
+    total_chunks: chunks.length,
+    uploaded_at: new Date().toISOString(),
+  }));
 
-      await index.upsertRecords({ records });
+  await index.upsertRecords({ records });
 
-      return Response.json({
-        success: true,
-        file: file.name,
-        chunks_upserted: records.length,
-      });
-    } catch (err: unknown) {
-      console.error("[upload] error:", err);
-      const message =
-        err instanceof Error ? err.message : "Internal server error";
-      return Response.json({ error: message }, { status: 500 });
-    }
-  },
+  // 2️⃣ Write document record to DynamoDB
+  await createDocumentRecord(docId, file.name, orgId, chunks.length);
+
+  return res.status(200).json({
+    success: true,
+    docId,
+    file: file.name,
+    org_id: orgId,
+    chunks_upserted: records.length,
+  });
 };
+
+export default compose(
+  withCors,
+  withAuth,
+  withOrgMember(["owner", "admin"]) // only owner/admin can upload docs
+)(handler);

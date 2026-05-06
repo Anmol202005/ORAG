@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 
 // ── Types ──────────────────────────────────────────────────────
 interface FileNode {
@@ -30,7 +30,37 @@ interface Artifact {
   timestamp: string;
 }
 
+interface OrgState {
+  orgId: string;
+  name: string;
+  slug: string;
+  [key: string]: unknown;
+}
+
 // ── API helpers ────────────────────────────────────────────────
+
+function getAuthHeaders(): HeadersInit {
+  // Adjust the key name to match wherever you store your token
+  const token = localStorage.getItem("auth_token") 
+    ?? localStorage.getItem("access_token")
+    ?? sessionStorage.getItem("token");
+  
+  return token
+    ? { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" }
+    : { "Content-Type": "application/json" };
+}
+
+async function apiFetchOrg(slug: string): Promise<OrgState> {
+  const res = await fetch(`/api/orgs/${slug}`, {
+    method: "GET",
+    headers: getAuthHeaders(),
+    credentials: "include",
+  });
+  if (!res.ok) throw new Error(`/api/orgs/${slug} ${res.status}`);
+  const data = await res.json();
+  return data.org as OrgState;
+}
+
 async function apiFetchFiles(): Promise<FileNode[]> {
   const res = await fetch("/api/files");
   if (!res.ok) throw new Error(`/api/files ${res.status}`);
@@ -69,22 +99,31 @@ function buildSystemMessage(fileNames: string[], webSearch: boolean): string {
   return parts.join(" ");
 }
 
-async function apiChatStream(messages: AgentMessage[], onToken: (token: string) => void): Promise<string> {
+async function apiChatStream(
+  messages: AgentMessage[],
+  onToken: (token: string) => void,
+  orgId: string
+): Promise<string> {
   const res = await fetch("/api/agent", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ messages }),
+    body: JSON.stringify({ messages, orgId }),
   });
-  if (!res.ok) { const text = await res.text().catch(() => ""); throw new Error(`/api/agent ${res.status}${text ? `: ${text}` : ""}`); }
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`/api/agent ${res.status}${text ? `: ${text}` : ""}`);
+  }
   const reader = res.body?.getReader();
   if (!reader) throw new Error("No response body from /api/agent");
   const decoder = new TextDecoder();
-  let full = ""; let buffer = "";
+  let full = "";
+  let buffer = "";
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
     buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split("\n"); buffer = lines.pop() ?? "";
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
     for (const line of lines) {
       const trimmed = line.trim();
       if (!trimmed.startsWith("data:")) continue;
@@ -92,7 +131,10 @@ async function apiChatStream(messages: AgentMessage[], onToken: (token: string) 
       if (!jsonStr || jsonStr === "[DONE]") continue;
       try {
         const evt = JSON.parse(jsonStr);
-        if (evt.type === "token" && typeof evt.content === "string") { full += evt.content; onToken(evt.content); }
+        if (evt.type === "token" && typeof evt.content === "string") {
+          full += evt.content;
+          onToken(evt.content);
+        }
       } catch { /* skip */ }
     }
   }
@@ -100,9 +142,18 @@ async function apiChatStream(messages: AgentMessage[], onToken: (token: string) 
 }
 
 const ARTIFACTS_KEY = "workspace_artifacts";
-function stubLoadArtifacts(): Artifact[] { try { return JSON.parse(localStorage.getItem(ARTIFACTS_KEY) ?? "[]"); } catch { return []; } }
-function stubSaveArtifact(a: Artifact) { const list = stubLoadArtifacts(); list.unshift(a); localStorage.setItem(ARTIFACTS_KEY, JSON.stringify(list.slice(0, 50))); }
-function stubDeleteArtifact(id: string) { const list = stubLoadArtifacts().filter((a) => a.id !== id); localStorage.setItem(ARTIFACTS_KEY, JSON.stringify(list)); }
+function stubLoadArtifacts(): Artifact[] {
+  try { return JSON.parse(localStorage.getItem(ARTIFACTS_KEY) ?? "[]"); } catch { return []; }
+}
+function stubSaveArtifact(a: Artifact) {
+  const list = stubLoadArtifacts();
+  list.unshift(a);
+  localStorage.setItem(ARTIFACTS_KEY, JSON.stringify(list.slice(0, 50)));
+}
+function stubDeleteArtifact(id: string) {
+  const list = stubLoadArtifacts().filter((a) => a.id !== id);
+  localStorage.setItem(ARTIFACTS_KEY, JSON.stringify(list));
+}
 
 function nowStr() { return new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); }
 function uid() { return Math.random().toString(36).slice(2, 9); }
@@ -309,7 +360,6 @@ function TypingIndicator() {
       </div>
 
       <div className="bg-white/[0.02] border border-white/[0.08] rounded-lg px-5 py-4 w-fit flex items-center gap-5">
-        {/* Animated ORAG logo mark */}
         <div className="relative w-5 h-5 shrink-0">
           <svg viewBox="0 0 20 20" className="w-5 h-5 absolute inset-0">
             {[
@@ -332,7 +382,6 @@ function TypingIndicator() {
           </svg>
         </div>
 
-        {/* Shimmering text lines */}
         <div className="flex flex-col gap-1.5">
           {[{ w: "w-28", delay: 0 }, { w: "w-20", delay: 0.1 }, { w: "w-24", delay: 0.2 }].map((line, i) => (
             <motion.div
@@ -352,6 +401,14 @@ function TypingIndicator() {
 // ── Main Component ─────────────────────────────────────────────
 export default function Workspace() {
   const navigate = useNavigate();
+  const { slug } = useParams<{ slug: string }>();
+
+  // ── Org state ──────────────────────────────────────────────
+  const [org, setOrg] = useState<OrgState | null>(null);
+  const [orgLoading, setOrgLoading] = useState(true);
+  const [orgError, setOrgError] = useState<string | null>(null);
+
+  // ── Workspace state ────────────────────────────────────────
   const [sources, setSources] = useState<FileNode[]>([]);
   const [filesLoading, setFilesLoading] = useState(true);
   const [filesError, setFilesError] = useState<string | null>(null);
@@ -370,23 +427,49 @@ export default function Workspace() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // ── Fetch org on mount ─────────────────────────────────────
   useEffect(() => {
+    if (!slug) {
+      setOrgError("No workspace slug found in URL.");
+      setOrgLoading(false);
+      return;
+    }
+    setOrgLoading(true);
+    apiFetchOrg(slug)
+      .then((data) => {
+        setOrg(data);
+        setSessionTitle(data.name ?? "Research Session");
+        setOrgError(null);
+      })
+      .catch((e) => setOrgError(e.message))
+      .finally(() => setOrgLoading(false));
+  }, [slug]);
+
+  // ── Fetch files once org is ready ─────────────────────────
+  useEffect(() => {
+    if (!org) return;
     setFilesLoading(true);
-    apiFetchFiles().then((tree) => { setSources(tree); setFilesError(null); }).catch((e) => setFilesError(e.message)).finally(() => setFilesLoading(false));
-  }, []);
+    apiFetchFiles()
+      .then((tree) => { setSources(tree); setFilesError(null); })
+      .catch((e) => setFilesError(e.message))
+      .finally(() => setFilesLoading(false));
+  }, [org]);
 
   useEffect(() => { setArtifacts(stubLoadArtifacts()); }, []);
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, chatLoading]);
 
-  const flattenNodes = useCallback((nodes: FileNode[]): FileNode[] => nodes.flatMap((n) => [n, ...(n.children ? flattenNodes(n.children) : [])]), []);
+  const flattenNodes = useCallback((nodes: FileNode[]): FileNode[] =>
+    nodes.flatMap((n) => [n, ...(n.children ? flattenNodes(n.children) : [])]), []);
 
   const toggleCheck = (id: string) => {
-    const toggle = (nodes: FileNode[]): FileNode[] => nodes.map((n) => n.id === id ? { ...n, checked: !n.checked } : n.children ? { ...n, children: toggle(n.children) } : n);
+    const toggle = (nodes: FileNode[]): FileNode[] =>
+      nodes.map((n) => n.id === id ? { ...n, checked: !n.checked } : n.children ? { ...n, children: toggle(n.children) } : n);
     setSources((prev) => toggle(prev));
   };
 
   const toggleFolder = (id: string) => {
-    const toggle = (nodes: FileNode[]): FileNode[] => nodes.map((n) => n.id === id ? { ...n, open: !n.open } : n.children ? { ...n, children: toggle(n.children) } : n);
+    const toggle = (nodes: FileNode[]): FileNode[] =>
+      nodes.map((n) => n.id === id ? { ...n, open: !n.open } : n.children ? { ...n, children: toggle(n.children) } : n);
     setSources((prev) => toggle(prev));
   };
 
@@ -413,7 +496,7 @@ export default function Workspace() {
 
   const sendMessage = async () => {
     const val = input.trim();
-    if (!val || chatLoading) return;
+    if (!val || chatLoading || !org) return;
     setInput("");
     const userMsg: Message = { id: uid(), role: "user", content: val, timestamp: nowStr() };
     setMessages((prev) => [...prev, userMsg]);
@@ -423,7 +506,6 @@ export default function Workspace() {
       const agentMessages: AgentMessage[] = [];
       const systemContent = buildSystemMessage(activeContextNames, webSearch);
       if (systemContent) agentMessages.push({ role: "system", content: systemContent });
-      // Use the messages state snapshot before this send, not after (userMsg already appended above)
       setMessages((prev) => {
         prev.forEach((m) => agentMessages.push({ role: m.role === "ai" ? "assistant" : "user", content: m.content }));
         return prev;
@@ -432,19 +514,19 @@ export default function Workspace() {
 
       const aiId = uid();
       const aiMsg: Message = { id: aiId, role: "ai", content: "", timestamp: nowStr() };
-
-      // Add the empty AI message bubble — the typing indicator will show until first token arrives
       setMessages((prev) => [...prev, aiMsg]);
 
-      // Stream tokens — chatLoading stays TRUE the entire time so the indicator is visible
       await apiChatStream(agentMessages, (token) => {
         setMessages((prev) => prev.map((m) => m.id === aiId ? { ...m, content: m.content + token } : m));
-      });
+      }, org.orgId);
 
-      // Stream finished — now we can drop the loading state
       setChatLoading(false);
     } catch (err: unknown) {
-      const errMsg: Message = { id: uid(), role: "ai", content: `⚠ Request failed: ${err instanceof Error ? err.message : String(err)}`, timestamp: nowStr() };
+      const errMsg: Message = {
+        id: uid(), role: "ai",
+        content: `⚠ Request failed: ${err instanceof Error ? err.message : String(err)}`,
+        timestamp: nowStr(),
+      };
       setMessages((prev) => [...prev, errMsg]);
       setChatLoading(false);
     }
@@ -456,23 +538,61 @@ export default function Workspace() {
 
   const saveArtifact = (type: Artifact["type"], title: string) => {
     const a: Artifact = { id: uid(), type, title, timestamp: nowStr() };
-    stubSaveArtifact(a); setArtifacts((prev) => [a, ...prev]);
+    stubSaveArtifact(a);
+    setArtifacts((prev) => [a, ...prev]);
   };
 
-  const deleteArtifact = (id: string) => { stubDeleteArtifact(id); setArtifacts((prev) => prev.filter((a) => a.id !== id)); };
+  const deleteArtifact = (id: string) => {
+    stubDeleteArtifact(id);
+    setArtifacts((prev) => prev.filter((a) => a.id !== id));
+  };
 
   const runTool = (type: Artifact["type"]) => {
-    const titleMap: Record<Artifact["type"], string> = { Summary: "Key themes · AI session", Flashcards: `Flashcards · ${messages.length} msgs`, "Mind Map": "Concept map · workspace", Report: "Full report · session" };
+    const titleMap: Record<Artifact["type"], string> = {
+      Summary: "Key themes · AI session",
+      Flashcards: `Flashcards · ${messages.length} msgs`,
+      "Mind Map": "Concept map · workspace",
+      Report: "Full report · session",
+    };
     saveArtifact(type, titleMap[type]);
   };
 
   const filteredSources = searchQ
-    ? sources.map((n) => ({ ...n, open: true, children: n.children?.filter((c) => c.name.toLowerCase().includes(searchQ.toLowerCase())) })).filter((n) => n.name.toLowerCase().includes(searchQ.toLowerCase()) || (n.children && n.children.length > 0))
+    ? sources
+        .map((n) => ({ ...n, open: true, children: n.children?.filter((c) => c.name.toLowerCase().includes(searchQ.toLowerCase())) }))
+        .filter((n) => n.name.toLowerCase().includes(searchQ.toLowerCase()) || (n.children && n.children.length > 0))
     : sources;
 
-  // The last AI message is the one currently streaming — show indicator if it has no content yet
   const lastMessage = messages[messages.length - 1];
   const showTypingIndicator = chatLoading && (!lastMessage || lastMessage.role !== "ai" || lastMessage.content === "");
+
+  // ── Org loading / error gates ──────────────────────────────
+  if (orgLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-[#0d0d0d]">
+        <div className="flex items-center gap-3 text-white/40">
+          {Icon.spinner}
+          <span className="font-mono text-[11px]">Loading workspace…</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (orgError || !org) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-[#0d0d0d] flex-col gap-3">
+        <span className="font-mono text-[11px] text-red-300/70">
+          Failed to load workspace: {orgError ?? "unknown error"}
+        </span>
+        <button
+          onClick={() => navigate("/organizations")}
+          className="font-mono text-[10px] text-white/40 border border-white/[0.12] px-3 py-1.5 rounded hover:text-white/70 hover:border-white/25 transition-all duration-150"
+        >
+          ← Back to organizations
+        </button>
+      </div>
+    );
+  }
 
   // ── Render ─────────────────────────────────────────────────
   return (
@@ -515,8 +635,13 @@ export default function Workspace() {
         {/* Search */}
         <div className="mx-3 mb-2 flex items-center gap-2 bg-white/[0.04] border border-white/[0.08] rounded-md px-3 py-1.5 focus-within:border-white/[0.18] transition-colors duration-150">
           <span className="text-white/30">{Icon.search}</span>
-          <input type="text" placeholder="Search files…" value={searchQ} onChange={(e) => setSearchQ(e.target.value)}
-            className="flex-1 bg-transparent border-none outline-none font-mono text-[10px] text-white/70 placeholder-white/25 caret-white/60" />
+          <input
+            type="text"
+            placeholder="Search files…"
+            value={searchQ}
+            onChange={(e) => setSearchQ(e.target.value)}
+            className="flex-1 bg-transparent border-none outline-none font-mono text-[10px] text-white/70 placeholder-white/25 caret-white/60"
+          />
         </div>
 
         {/* File tree */}
@@ -530,15 +655,25 @@ export default function Workspace() {
             <div className="mx-3 my-2 rounded-md border border-red-400/25 bg-red-400/[0.07] px-3 py-2">
               <p className="font-mono text-[9px] text-red-300/80">Failed to load files</p>
               <p className="font-mono text-[8px] text-red-300/50 mt-0.5">{filesError}</p>
-              <button onClick={() => { setFilesError(null); setFilesLoading(true); apiFetchFiles().then(setSources).catch((e) => setFilesError(e.message)).finally(() => setFilesLoading(false)); }}
-                className="mt-1.5 font-mono text-[9px] text-red-300/60 hover:text-red-300 underline">Retry</button>
+              <button
+                onClick={() => {
+                  setFilesError(null);
+                  setFilesLoading(true);
+                  apiFetchFiles().then(setSources).catch((e) => setFilesError(e.message)).finally(() => setFilesLoading(false));
+                }}
+                className="mt-1.5 font-mono text-[9px] text-red-300/60 hover:text-red-300 underline"
+              >
+                Retry
+              </button>
             </div>
           )}
           {!filesLoading && !filesError && filteredSources.length === 0 && (
             <p className="font-mono text-[9px] text-white/25 italic px-4 py-3">No files — upload one above</p>
           )}
           <AnimatePresence>
-            {filteredSources.map((node) => <TreeNode key={node.id} node={node} onToggleCheck={toggleCheck} onToggleFolder={toggleFolder} />)}
+            {filteredSources.map((node) => (
+              <TreeNode key={node.id} node={node} onToggleCheck={toggleCheck} onToggleFolder={toggleFolder} />
+            ))}
           </AnimatePresence>
 
           {/* Web search toggle */}
@@ -560,7 +695,10 @@ export default function Workspace() {
         {/* Integrations */}
         <div className="border-t border-white/[0.08] p-3 flex-shrink-0 space-y-1.5">
           <SectionLabel>Integrations</SectionLabel>
-          {[{ icon: Icon.drive, label: "Google Drive", connected: driveConnected }, { icon: Icon.web, label: "Notion", connected: false }].map(({ icon, label, connected }) => (
+          {[
+            { icon: Icon.drive, label: "Google Drive", connected: driveConnected },
+            { icon: Icon.web, label: "Notion", connected: false },
+          ].map(({ icon, label, connected }) => (
             <button key={label} disabled
               className="w-full flex items-center gap-2.5 bg-white/[0.03] border border-white/[0.07] rounded-md px-3 py-2
                 hover:bg-white/[0.06] transition-all duration-150 opacity-40 cursor-not-allowed">
@@ -578,8 +716,10 @@ export default function Workspace() {
       <main className="flex-1 flex flex-col overflow-hidden relative z-10">
 
         {/* Chat header */}
-        <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, delay: 0.05 }}
-          className="flex items-center justify-between px-6 py-3.5 border-b border-white/[0.08] flex-shrink-0">
+        <motion.div
+          initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, delay: 0.05 }}
+          className="flex items-center justify-between px-6 py-3.5 border-b border-white/[0.08] flex-shrink-0"
+        >
           <div className="flex items-center gap-3 min-w-0">
             {editingTitle ? (
               <input
@@ -591,16 +731,25 @@ export default function Workspace() {
                 className="bg-transparent border-b border-white/[0.20] outline-none text-[15px] font-light text-white/90 pb-0.5 min-w-0"
               />
             ) : (
-              <p className="text-[15px] font-light text-white/80 cursor-text hover:text-white/95 transition-colors duration-150 truncate"
-                onClick={() => setEditingTitle(true)}>
+              <p
+                className="text-[15px] font-light text-white/80 cursor-text hover:text-white/95 transition-colors duration-150 truncate"
+                onClick={() => setEditingTitle(true)}
+              >
                 {sessionTitle}
               </p>
             )}
             <span className="font-mono text-[9px] text-white/25 shrink-0">· {messages.length} messages</span>
+            {/* Org badge */}
+            <span className="font-mono text-[9px] text-white/20 border border-white/[0.08] bg-white/[0.03] rounded px-2 py-0.5 shrink-0 truncate max-w-[120px]">
+              {org.slug}
+            </span>
           </div>
-          <button onClick={() => setMessages([])}
+          <button
+            onClick={() => setMessages([])}
             className="w-6 h-6 flex items-center justify-center rounded border border-white/[0.08] bg-transparent text-white/35
-              hover:text-white/65 hover:border-white/20 hover:bg-white/[0.05] transition-all duration-150" title="New chat">
+              hover:text-white/65 hover:border-white/20 hover:bg-white/[0.05] transition-all duration-150"
+            title="New chat"
+          >
             {Icon.plus}
           </button>
         </motion.div>
@@ -622,15 +771,13 @@ export default function Workspace() {
           )}
 
           <AnimatePresence initial={false}>
-            {messages.map((msg) => (
-              // Only render the AI bubble if it has content — the typing indicator covers the empty-content gap
+            {messages.map((msg) =>
               msg.role === "ai" && msg.content === "" ? null : (
                 <MessageBubble key={msg.id} msg={msg} onSave={(title) => saveArtifact("Summary", title)} />
               )
-            ))}
+            )}
           </AnimatePresence>
 
-          {/* Typing indicator — shown whenever chatLoading is true AND the last AI bubble is still empty */}
           <AnimatePresence>
             {showTypingIndicator && <TypingIndicator />}
           </AnimatePresence>
@@ -643,12 +790,22 @@ export default function Workspace() {
           <span className="font-mono text-[8.5px] uppercase tracking-widest text-white/25">Context:</span>
           <AnimatePresence>
             {activeContextNames.map((s) => (
-              <motion.span key={s} initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }} transition={{ duration: 0.15 }}
-                className="font-mono text-[9px] text-white/50 border border-white/[0.10] bg-white/[0.04] rounded px-2 py-0.5">{s}</motion.span>
+              <motion.span
+                key={s}
+                initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }} transition={{ duration: 0.15 }}
+                className="font-mono text-[9px] text-white/50 border border-white/[0.10] bg-white/[0.04] rounded px-2 py-0.5"
+              >
+                {s}
+              </motion.span>
             ))}
             {webSearch && (
-              <motion.span key="web" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}
-                className="font-mono text-[9px] text-white/50 border border-white/[0.10] bg-white/[0.04] rounded px-2 py-0.5">Web Search</motion.span>
+              <motion.span
+                key="web"
+                initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}
+                className="font-mono text-[9px] text-white/50 border border-white/[0.10] bg-white/[0.04] rounded px-2 py-0.5"
+              >
+                Web Search
+              </motion.span>
             )}
             {activeContextNames.length === 0 && !webSearch && (
               <span className="font-mono text-[9px] text-white/20 italic">No sources selected</span>
@@ -691,8 +848,10 @@ export default function Workspace() {
       ══════════════════════════════════════════ */}
       <aside className="w-[210px] flex-shrink-0 border-l border-white/[0.08] flex flex-col bg-[#0d0d0d] overflow-hidden relative z-10">
 
-        <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, delay: 0.1 }}
-          className="px-4 py-3.5 border-b border-white/[0.08] flex-shrink-0">
+        <motion.div
+          initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, delay: 0.1 }}
+          className="px-4 py-3.5 border-b border-white/[0.08] flex-shrink-0"
+        >
           <p className="font-mono text-[9px] tracking-widest uppercase text-white/35">Tools</p>
         </motion.div>
 
@@ -706,10 +865,14 @@ export default function Workspace() {
               { type: "Mind Map" as const, icon: Icon.mindmap },
               { type: "Report" as const, icon: Icon.report },
             ] as const).map(({ type, icon }) => (
-              <button key={type} onClick={() => runTool(type)} disabled={messages.length === 0}
+              <button
+                key={type}
+                onClick={() => runTool(type)}
+                disabled={messages.length === 0}
                 className="flex flex-col gap-2 bg-white/[0.03] border border-white/[0.08] rounded-md p-2.5 text-left
                   hover:bg-white/[0.07] hover:border-white/[0.15] transition-all duration-150 group
-                  disabled:opacity-25 disabled:cursor-not-allowed">
+                  disabled:opacity-25 disabled:cursor-not-allowed"
+              >
                 <span className="text-white/40 group-hover:text-white/65 transition-colors">{icon}</span>
                 <span className="font-mono text-[9px] tracking-widest uppercase text-white/40 group-hover:text-white/65 transition-colors">{type}</span>
               </button>
@@ -733,14 +896,21 @@ export default function Workspace() {
           <div className="px-3 pb-3 space-y-1.5">
             <AnimatePresence initial={false}>
               {artifacts.map((a) => (
-                <motion.div key={a.id} initial={{ opacity: 0, y: -8, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} transition={{ duration: 0.2 }}
-                  className="bg-white/[0.02] border border-white/[0.08] rounded-md p-2.5 hover:bg-white/[0.05] hover:border-white/[0.13] transition-all duration-150 cursor-pointer group relative">
+                <motion.div
+                  key={a.id}
+                  initial={{ opacity: 0, y: -8, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} transition={{ duration: 0.2 }}
+                  className="bg-white/[0.02] border border-white/[0.08] rounded-md p-2.5 hover:bg-white/[0.05] hover:border-white/[0.13] transition-all duration-150 cursor-pointer group relative"
+                >
                   <div className="flex items-center gap-1.5 mb-1">
                     <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${artifactDots[a.type]}`} />
                     <span className={`font-mono text-[8.5px] tracking-widest uppercase ${artifactColors[a.type].split(" ")[0]}`}>{a.type}</span>
-                    <button onClick={(e) => { e.stopPropagation(); deleteArtifact(a.id); }}
+                    <button
+                      onClick={(e) => { e.stopPropagation(); deleteArtifact(a.id); }}
                       className="ml-auto text-white/0 group-hover:text-white/30 hover:!text-white/65 transition-colors duration-150"
-                      title="Delete">{Icon.trash}</button>
+                      title="Delete"
+                    >
+                      {Icon.trash}
+                    </button>
                   </div>
                   <p className="text-[11px] text-white/60 leading-snug">{a.title}</p>
                   <p className="font-mono text-[8px] text-white/25 mt-1">{a.timestamp}</p>
@@ -752,8 +922,10 @@ export default function Workspace() {
 
         {/* Status bar */}
         <div className="border-t border-white/[0.08] px-4 py-2.5 flex items-center gap-2 flex-shrink-0">
-          <span className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-            style={{ background: chatLoading ? "#fbbf24" : "#34d399", opacity: 0.65, animation: "blinkDot 2.5s ease infinite" }} />
+          <span
+            className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+            style={{ background: chatLoading ? "#fbbf24" : "#34d399", opacity: 0.65, animation: "blinkDot 2.5s ease infinite" }}
+          />
           <span className="font-mono text-[8.5px] text-white/30 truncate">
             {chatLoading ? "Processing…" : "claude-sonnet-4 · ready"}
           </span>

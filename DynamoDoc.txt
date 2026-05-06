@@ -1,0 +1,46 @@
+ORAG PLATFORM — AGENT OVERVIEW
+================================
+
+STACK
+  Vercel Serverless (TypeScript) + AWS DynamoDB + Google OAuth + JWT
+
+TABLE DESIGN
+  Single DynamoDB table. All entities share one table keyed by pk + sk.
+
+  pk/sk patterns:
+    USER#<userId>   PROFILE        → user record
+    USER#<userId>   MEMBER#<orgId> → org membership (role: owner/admin/member)
+    ORG#<orgId>     PROFILE        → org record
+    SLUG#<slug>     ORG            → slug → orgId mapping (uniqueness guard)
+
+  GSIs:
+    GSI1  GSI1PK = EMAIL#<email>   → email lookup at sign-in
+    GSI2  GSI2PK = PUBLIC_ORGS     → list all public orgs (sparse — only set when isPublic=true)
+
+AUTH FLOW
+  1. Client sends Google ID token to POST /api/auth/google
+  2. Server verifies token, queries GSI1 for existing user
+  3. If new user → PutItem creates USER# PROFILE record
+  4. Server returns signed JWT { userId, email, name }
+  5. All subsequent requests send: Authorization: Bearer <token>
+
+MIDDLEWARE (lib/middleware.ts)
+  withAuth         → required auth, injects req.user or returns 401
+  withOptionalAuth → injects req.user if token present, never blocks
+  withCors         → sets CORS headers, handles OPTIONS preflight
+  compose          → chains middleware: compose(withCors, withAuth)(handler)
+
+API ENDPOINTS
+  GET  /api/auth/me              → fetch current user profile
+  POST /api/auth/signout         → stateless (client drops JWT)
+  GET  /api/orgs/mine            → user's orgs: query MEMBER#* + BatchGet org profiles
+  GET  /api/orgs/public          → public orgs via GSI2, optional ?search= filter
+  POST /api/orgs                 → create org: TransactWrite (org + slug + membership)
+  POST /api/orgs/:id/join        → join org: TransactWrite (membership + memberCount++)
+  GET  /api/orgs/:slug           → get org by slug: resolve slug → orgId → org profile
+
+KEY RULES FOR WRITES
+  - Org create uses TransactWriteCommand (3 items, atomic)
+  - Slug uniqueness enforced via ConditionExpression: attribute_not_exists(pk)
+  - memberCount incremented with SET memberCount = memberCount + :inc (no race conditions)
+  - Public orgs get GSI2PK/GSI2SK set; private orgs do not (sparse index)

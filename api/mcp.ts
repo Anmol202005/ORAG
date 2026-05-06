@@ -1,39 +1,81 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { Pinecone } from "@pinecone-database/pinecone";
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { DynamoDBDocumentClient, GetCommand } from "@aws-sdk/lib-dynamodb";
 import { z } from "zod";
 import { toReqRes, toFetchResponse } from "fetch-to-node";
+import { verifyToken } from "../lib/middleware";
 import dotenv from "dotenv";
 
 dotenv.config({ path: "./.env" });
 
-// ── Pinecone (reused across warm invocations) ─────────────────────────────────
 const pc = new Pinecone({ apiKey: process.env.PINECONE_API_KEY! });
-const index = pc.index({
-  name: process.env.PINECONE_INDEX_NAME!,
-});
+const index = pc.index({ name: process.env.PINECONE_INDEX_NAME! });
 
-// When running on Vercel the upload API is on the same origin.
-// Override with UPLOAD_API_URL for local dev (e.g. http://localhost:3000).
-function getUploadUrl(request: Request): string {
-  if (process.env.UPLOAD_API_URL) return process.env.UPLOAD_API_URL;
-  const url = new URL(request.url);
-  return `${url.protocol}//${url.host}`;
+const ddb = DynamoDBDocumentClient.from(
+  new DynamoDBClient({ region: process.env.AWS_REGION ?? "us-east-1" })
+);
+const TABLE = process.env.DYNAMO_TABLE_NAME!;
+
+// ── Auth + membership guard ───────────────────────────────────────────────────
+
+async function resolveOrgMember(
+  request: Request,
+  orgId: string
+): Promise<{ error: string; status: number } | null> {
+  // 1. Extract Bearer token
+  const authHeader = request.headers.get("authorization") ?? "";
+  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
+
+  if (!token) {
+    return { error: "Authentication required", status: 401 };
+  }
+
+  // 2. Verify JWT — reuse verifyToken from middleware
+  let userId: string;
+  try {
+    const user = verifyToken(token);
+    userId = user.userId;
+  } catch (err) {
+    const name = (err as Error).name;
+    if (name === "TokenExpiredError") return { error: "Token expired", status: 401 };
+    return { error: "Invalid token", status: 401 };
+  }
+
+  // 3. Check org membership in DynamoDB
+  const memberRecord = await ddb.send(
+    new GetCommand({
+      TableName: TABLE,
+      Key: { pk: `USER#${userId}`, sk: `MEMBER#${orgId}` },
+    })
+  );
+
+  if (!memberRecord.Item) {
+    // 404 instead of 403 — don't leak org existence
+    return { error: "Org not found", status: 404 };
+  }
+
+  return null; // all good
 }
 
-// ── MCP server factory (fresh instance per request) ───────────────────────────
-function createServer(uploadBaseUrl: string) {
+// ── MCP Server factory ────────────────────────────────────────────────────────
+
+function createServer(orgId: string) {
   const server = new McpServer({ name: "pinecone-rag", version: "1.0.0" });
-  
-  // ── searchDocument ──────────────────────────────────────────────────────────
+
   server.registerTool(
     "searchDocument",
     {
       title: "Search Documents",
       description:
-        "Semantically search the Pinecone vector database with a natural language query.",
+        "Semantically search the Pinecone vector database filtered by organization ID and optional document IDs.",
       inputSchema: {
         query: z.string().describe("Natural language search query"),
+        doc_ids: z
+          .array(z.string())
+          .optional()
+          .describe("Optional list of document IDs to restrict search to specific documents within the org"),
         topK: z
           .number()
           .int()
@@ -48,19 +90,36 @@ function createServer(uploadBaseUrl: string) {
           .describe("Optional Pinecone namespace to search within"),
       },
     },
-    async ({ query, topK, namespace }) => {
+    // org_id removed from inputSchema — it's injected from the verified token
+    async ({ query, doc_ids, topK, namespace }) => {
       const target = namespace ? index.namespace(namespace) : index;
 
+      const filter: Record<string, unknown> =
+        doc_ids && doc_ids.length > 0
+          ? { $and: [{ org_id: { $eq: orgId } }, { doc_id: { $in: doc_ids } }] }
+          : { org_id: { $eq: orgId } };
+
       const response = await target.searchRecords({
-        query: { topK: topK ?? 5, inputs: { text: query } },
-        fields: ["text", "source_file", "chunk_index", "total_chunks"],
+        query: {
+          topK: topK ?? 5,
+          inputs: { text: query },
+          filter,
+        },
+        fields: ["text", "source_file", "doc_id", "chunk_index", "total_chunks", "org_id"],
       });
 
       const hits = response.result?.hits ?? [];
 
       if (hits.length === 0) {
         return {
-          content: [{ type: "text", text: "No results found for your query." }],
+          content: [
+            {
+              type: "text",
+              text: `No results found for query "${query}" in org "${orgId}"${
+                doc_ids?.length ? ` within docs [${doc_ids.join(", ")}]` : ""
+              }.`,
+            },
+          ],
         };
       }
 
@@ -71,6 +130,7 @@ function createServer(uploadBaseUrl: string) {
           return [
             `### Result ${i + 1} (score: ${score})`,
             `**Source:** ${f.source_file ?? "unknown"}`,
+            `**Doc ID:** ${f.doc_id ?? "unknown"}`,
             `**Chunk:** ${f.chunk_index ?? "?"} / ${(f.total_chunks ?? 1) - 1}`,
             ``,
             f.text ?? "(no text)",
@@ -85,68 +145,62 @@ function createServer(uploadBaseUrl: string) {
   return server;
 }
 
-// ── Vercel Web Standard handler ───────────────────────────────────────────────
+// ── Fetch handler ─────────────────────────────────────────────────────────────
+
 export default {
   async fetch(request: Request): Promise<Response> {
-    const method = request.method;
-
-    // Only POST is supported in stateless mode.
-    // GET/DELETE are not needed without session management.
-    if (method !== "POST") {
+    if (request.method !== "POST") {
       return Response.json(
         { error: "Method not allowed. Only POST is supported in stateless mode." },
         { status: 405, headers: { Allow: "POST" } }
       );
     }
 
-    let body: unknown;
-    try {
-      body = await request;
-    } catch {
+    // Extract org_id from query param: POST /mcp?org_id=xxx
+    const url = new URL(request.url);
+    const orgId = url.searchParams.get("org_id")?.trim();
+
+    if (!orgId) {
       return Response.json(
-        { jsonrpc: "2.0", error: { code: -32700, message: "Parse error: invalid JSON" }, id: null },
+        { jsonrpc: "2.0", error: { code: -32600, message: "org_id query param is required" }, id: null },
         { status: 400 }
       );
     }
 
-    const uploadBaseUrl = getUploadUrl(request);
+    // ── Auth + membership check before touching MCP ───────────────────────────
+    const authError = await resolveOrgMember(request, orgId);
+    if (authError) {
+      return Response.json(
+        { jsonrpc: "2.0", error: { code: -32600, message: authError.error }, id: null },
+        { status: authError.status }
+      );
+    }
 
-    // Use fetch-to-node to produce proper Node IncomingMessage + ServerResponse
-    // shims — the MCP SDK's handleRequest requires real Node-style objects.
+    // ── MCP handling ──────────────────────────────────────────────────────────
     const { req, res } = toReqRes(request);
-
-    // Fresh server + stateless transport per request
-    const server = createServer(uploadBaseUrl);
+    const server = createServer(orgId); // orgId locked in for this request
     const transport = new StreamableHTTPServerTransport({
-      sessionIdGenerator: undefined, // stateless — no session tracking
-      enableJsonResponse: true,      // plain JSON responses (no SSE streaming)
+      sessionIdGenerator: undefined,
+      enableJsonResponse: true,
     });
 
     try {
       await server.connect(transport);
       await transport.handleRequest(req, res);
 
-      // Cleanup once the response stream closes
       res.on("close", () => {
         transport.close().catch(() => {});
         server.close().catch(() => {});
       });
 
-      // Convert Node-style ServerResponse back to a Web API Response
       return toFetchResponse(res);
     } catch (err: any) {
-      // Ensure cleanup even on error
       transport.close().catch(() => {});
       server.close().catch(() => {});
-
       console.error("[MCP] Unhandled error:", err);
 
       return Response.json(
-        {
-          jsonrpc: "2.0",
-          error: { code: -32603, message: "Internal server error" },
-          id: null,
-        },
+        { jsonrpc: "2.0", error: { code: -32603, message: "Internal server error" }, id: null },
         { status: 500 }
       );
     }

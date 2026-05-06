@@ -2,8 +2,21 @@ import { ChatOpenAI } from "@langchain/openai";
 import { HumanMessage, AIMessage, BaseMessage } from "@langchain/core/messages";
 import { MultiServerMCPClient } from "@langchain/mcp-adapters";
 import { createAgent } from "langchain";
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { DynamoDBDocumentClient, GetCommand } from "@aws-sdk/lib-dynamodb";
+import { verifyToken } from "../lib/middleware";
+import dotenv from "dotenv";
+
+dotenv.config({ path: "./.env" });
 
 export const dynamic = "force-dynamic";
+
+const ddb = DynamoDBDocumentClient.from(
+  new DynamoDBClient({ region: process.env.AWS_REGION ?? "us-east-1" })
+);
+const TABLE = process.env.DYNAMO_TABLE_NAME!;
+
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 interface ChatMessage {
   role: "user" | "assistant" | "system";
@@ -12,15 +25,60 @@ interface ChatMessage {
 
 interface AgentRequestBody {
   messages: ChatMessage[];
+  org_id: string;          // required — scopes the agent to the user's org
   systemPrompt?: string;
+}
+
+// ── Auth + membership guard ───────────────────────────────────────────────────
+
+async function authenticate(
+  request: Request,
+  orgId: string
+): Promise<{ error: string; status: number } | null> {
+  // 1. Extract Bearer token
+  const authHeader = request.headers.get("authorization") ?? "";
+  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
+
+  if (!token) {
+    return { error: "Authentication required", status: 401 };
+  }
+
+  // 2. Verify JWT — reuse verifyToken from middleware
+  let userId: string;
+  try {
+    const user = verifyToken(token);
+    userId = user.userId;
+  } catch (err) {
+    const name = (err as Error).name;
+    if (name === "TokenExpiredError") return { error: "Token expired", status: 401 };
+    return { error: "Invalid token", status: 401 };
+  }
+
+  // 3. Check org membership in DynamoDB
+  const memberRecord = await ddb.send(
+    new GetCommand({
+      TableName: TABLE,
+      Key: { pk: `USER#${userId}`, sk: `MEMBER#${orgId}` },
+    })
+  );
+
+  if (!memberRecord.Item) {
+    // 404 instead of 403 — don't leak org existence
+    return { error: "Org not found", status: 404 };
+  }
+
+  return null; // all good
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function getMcpUrl(request: Request): string {
-  if (process.env.MCP_SERVER_URL) return process.env.MCP_SERVER_URL;
-  const { protocol, host } = new URL(request.url);
-  return `${protocol}//${host}/api/mcp`;
+function getMcpUrl(request: Request, orgId: string): string {
+  // Pass org_id as query param so MCP server can scope searches to this org
+  const base = process.env.MCP_SERVER_URL
+    ? process.env.MCP_SERVER_URL
+    : `${new URL(request.url).protocol}//${new URL(request.url).host}/api/mcp`;
+
+  return `${base}?org_id=${encodeURIComponent(orgId)}`;
 }
 
 function sse(payload: Record<string, unknown>): Uint8Array {
@@ -45,13 +103,10 @@ Today is ${new Date().toISOString().slice(0, 10)}.`;
   const last = nonSystem.at(-1);
   const input = last?.role === "user" ? last.content : "";
 
-  // Build prior chat history (everything except the final user message)
   const chatHistory: BaseMessage[] = nonSystem
     .slice(0, -1)
     .map((m) =>
-      m.role === "user"
-        ? new HumanMessage(m.content)
-        : new AIMessage(m.content),
+      m.role === "user" ? new HumanMessage(m.content) : new AIMessage(m.content)
     );
 
   return { systemContent, chatHistory, input };
@@ -72,110 +127,92 @@ export default {
       return Response.json({ error: "Invalid JSON body" }, { status: 400 });
     }
 
-    const { messages, systemPrompt: systemOverride } = body;
+    const { messages, org_id, systemPrompt: systemOverride } = body;
 
     if (!messages?.length) {
-      return Response.json(
-        { error: "'messages' array required" },
-        { status: 400 },
-      );
+      return Response.json({ error: "'messages' array required" }, { status: 400 });
     }
 
-    const mcpUrl = getMcpUrl(request);
+    if (!org_id?.trim()) {
+      return Response.json({ error: "'org_id' is required" }, { status: 400 });
+    }
+
+    const orgId = org_id.trim();
+
+    // ── Auth + membership check before streaming ──────────────────────────────
+    const authError = await authenticate(request, orgId);
+    if (authError) {
+      return Response.json({ error: authError.error }, { status: authError.status });
+    }
+
+    // ── Verified — start streaming ────────────────────────────────────────────
+    const mcpUrl = getMcpUrl(request, orgId);
 
     const stream = new ReadableStream({
       async start(controller) {
         const send = (payload: Record<string, unknown>) =>
           controller.enqueue(sse(payload));
 
-        // Declare outside try so finally can close it
         let mcpClient: MultiServerMCPClient | null = null;
 
         try {
-          // 1. Connect to the MCP server using MultiServerMCPClient
-          //    (Streamable HTTP transport — same pattern as 06-mcp chapter)
+          // 1. Connect to MCP — org_id is baked into the URL so the MCP server
+          //    scopes all Pinecone searches to this org automatically
           mcpClient = new MultiServerMCPClient({
             "pinecone-rag": {
               transport: "http",
               url: mcpUrl,
+              // Forward the Authorization header so MCP server can re-verify
+              headers: {
+                Authorization: request.headers.get("authorization") ?? "",
+              },
             },
           });
 
-          // 2. Load MCP tools as LangChain StructuredTools
-          //    getTools() returns StructuredTool[] — pass the whole array to createAgent
           const tools = await mcpClient.getTools();
 
-          // 3. Parse the incoming conversation
           const allMessages: ChatMessage[] = systemOverride
             ? [{ role: "system", content: systemOverride }, ...messages]
             : messages;
 
-          const { systemContent, chatHistory, input } =
-            parseMessages(allMessages);
+          const { systemContent, chatHistory, input } = parseMessages(allMessages);
 
           if (!input) {
-            send({
-              type: "error",
-              message: "Last message must be from the user.",
-            });
+            send({ type: "error", message: "Last message must be from the user." });
             controller.close();
             return;
           }
 
-          // 4. Build the LLM
           const model = new ChatOpenAI({
             model: process.env.AI_MODEL,
             configuration: { baseURL: process.env.AI_ENDPOINT },
             apiKey: process.env.AI_API_KEY,
           });
 
-          // 5. Create the agent using the v1 createAgent() API
-          //    (ReAct loop is managed automatically — see 05-agents chapter)
-          //    Pass the system prompt as an extra system message prepended to the
-          //    messages array so createAgent() picks it up correctly.
-          const agent = createAgent({
-            model,
-            tools, // StructuredTool[] from MCP
-          });
+          const agent = createAgent({ model, tools });
 
-          // 6. Build the full messages array for this invocation.
-          //    createAgent() uses { messages } — it does NOT accept input/chat_history
-          //    as top-level keys the way the old executor did.
           const agentMessages: BaseMessage[] = [
-            // System instruction as the very first message
             new AIMessage({ content: systemContent, role: "system" } as any),
-            // Prior turns from the conversation
             ...chatHistory,
-            // The current user query
             new HumanMessage(input),
           ];
 
-          // 7. Stream the agent run.
-          //    Each chunk is one of:
-          //      { messages: [...] }  — partial message updates / tool events
-          //    The agent may call tools multiple times before producing a final answer.
           const agentStream = await agent.stream(
             { messages: agentMessages },
-            { streamMode: "messages" },
+            { streamMode: "messages" }
           );
 
           for await (const [chunk, metadata] of agentStream) {
-            // Tool call started (AIMessage carrying tool_calls)
             if (
               "tool_calls" in chunk &&
               Array.isArray(chunk.tool_calls) &&
               chunk.tool_calls.length > 0
             ) {
               for (const tc of chunk.tool_calls) {
-                send({
-                  type: "tool_start",
-                  name: tc.name,
-                  input: tc.args,
-                });
+                send({ type: "tool_start", name: tc.name, input: tc.args });
               }
             }
 
-            // Tool result returned (ToolMessage)
             if (chunk.getType?.() === "tool") {
               send({
                 type: "tool_end",
@@ -184,7 +221,6 @@ export default {
               });
             }
 
-            // Streaming text token from the final answer
             if (
               chunk.getType?.() === "ai" &&
               typeof chunk.content === "string" &&
@@ -195,16 +231,11 @@ export default {
             }
           }
 
-          // 8. Emit done — the client assembles tokens into the final answer
           send({ type: "done" });
         } catch (err: any) {
           console.error("[agent] error:", err);
-          send({
-            type: "error",
-            message: err?.message ?? "Internal server error",
-          });
+          send({ type: "error", message: err?.message ?? "Internal server error" });
         } finally {
-          // Always close the MCP client — no scope bug
           if (mcpClient) await mcpClient.close().catch(() => {});
           controller.close();
         }
