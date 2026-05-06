@@ -1,8 +1,8 @@
-// api/orgs/[slug]/docs/upload.ts
+// api/orgs/[slug]/uploadFile.ts
 import type { VercelResponse } from "@vercel/node";
 import { Pinecone } from "@pinecone-database/pinecone";
 import { PutCommand } from "@aws-sdk/lib-dynamodb";
-import { docClient } from "../lib/dynamo";
+import { docClient } from "../../../lib/dynamo";
 import { PDFParse } from "pdf-parse";
 import { randomUUID } from "crypto";
 import {
@@ -11,7 +11,7 @@ import {
   withAuth,
   withOrgMember,
   type AuthenticatedRequest,
-} from "../lib/middleware";
+} from "../../../lib/middleware";
 
 const pc = new Pinecone({ apiKey: process.env.PINECONE_API_KEY! });
 const index = pc.index({ name: process.env.PINECONE_INDEX_NAME! });
