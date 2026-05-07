@@ -545,7 +545,7 @@ export default function DocsPage() {
               </p>
               <Callout type="tip">
                 All examples below assume your ORAG instance is deployed at{" "}
-                <IC>https://your-orag-instance.com</IC>. Replace this with your
+                <IC>https://orag.theanmolsharma.com</IC>. Replace this with your
                 actual domain.
               </Callout>
             </section>
@@ -559,7 +559,7 @@ export default function DocsPage() {
                 Every MCP endpoint is scoped to an organisation. The URL format is:
               </p>
               <CodeBlock lang="text">
-                {`https://your-orag-instance.com/api/orgs/{slug}/mcp`}
+                {`https://orag.theanmolsharma.com/api/orgs/{slug}/mcp`}
               </CodeBlock>
               <p className="text-sm font-light text-white/45 leading-relaxed">
                 The <IC>slug</IC> is the URL-safe identifier for your org (e.g.{" "}
@@ -809,7 +809,7 @@ from mcp.client.sse import sse_client
 
 async def main():
     url = (
-        "https://your-orag-instance.com"
+        "https://orag.theanmolsharma.com"
         "/api/orgs/acme-corp/mcp"
     )
     headers = {"Authorization": "Bearer orag_live_xxxxxxxxxxxxxxxxxxxx"}
