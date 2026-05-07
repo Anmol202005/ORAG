@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import React from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useNavigate, useParams } from "react-router-dom";
 import { upload } from "@vercel/blob/client";
@@ -31,8 +32,15 @@ interface OrgState {
   [key: string]: unknown;
 }
 
-// ── API helpers ────────────────────────────────────────────────
+// ── 401 handler ────────────────────────────────────────────────
+function handle401(navigate: (path: string) => void) {
+  localStorage.removeItem("auth_token");
+  localStorage.removeItem("access_token");
+  sessionStorage.removeItem("token");
+  navigate("/");
+}
 
+// ── API helpers ────────────────────────────────────────────────
 function getAuthHeaders(): HeadersInit {
   const token =
     localStorage.getItem("auth_token") ??
@@ -44,12 +52,19 @@ function getAuthHeaders(): HeadersInit {
     : { "Content-Type": "application/json" };
 }
 
-async function apiFetchOrg(slug: string): Promise<OrgState> {
+async function apiFetchOrg(
+  slug: string,
+  navigate: (path: string) => void
+): Promise<OrgState> {
   const res = await fetch(`/api/orgs/${slug}`, {
     method: "GET",
     headers: getAuthHeaders(),
     credentials: "include",
   });
+  if (res.status === 401) {
+    handle401(navigate);
+    throw new Error("Unauthorized");
+  }
   const text = await res.text();
   if (!res.ok) throw new Error(`/api/orgs/${slug} ${res.status}`);
   try {
@@ -60,12 +75,19 @@ async function apiFetchOrg(slug: string): Promise<OrgState> {
   }
 }
 
-async function apiFetchFiles(slug: string): Promise<FileNode[]> {
+async function apiFetchFiles(
+  slug: string,
+  navigate: (path: string) => void
+): Promise<FileNode[]> {
   const res = await fetch(`/api/orgs/${slug}/getFilesByOrgId`, {
     method: "GET",
     headers: getAuthHeaders(),
     credentials: "include",
   });
+  if (res.status === 401) {
+    handle401(navigate);
+    throw new Error("Unauthorized");
+  }
   if (!res.ok)
     throw new Error(`/api/orgs/${slug}/getFilesByOrgId ${res.status}`);
   const data = await res.json();
@@ -98,7 +120,11 @@ async function apiFetchFiles(slug: string): Promise<FileNode[]> {
   ];
 }
 
-async function apiUploadFile(file: File, slug: string): Promise<FileNode> {
+async function apiUploadFile(
+  file: File,
+  slug: string,
+  navigate: (path: string) => void
+): Promise<FileNode> {
   const authHeaders = getAuthHeaders() as Record<string, string>;
 
   const blob = await upload(file.name, file, {
@@ -117,6 +143,11 @@ async function apiUploadFile(file: File, slug: string): Promise<FileNode> {
     credentials: "include",
     body: JSON.stringify({ blobUrl: blob.url, fileName: file.name }),
   });
+
+  if (res.status === 401) {
+    handle401(navigate);
+    throw new Error("Unauthorized");
+  }
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
@@ -140,7 +171,7 @@ function buildSystemMessage(fileNames: string[], webSearch: boolean): string {
   const parts: string[] = [];
   if (fileNames.length)
     parts.push(
-      `The user has the following files in context: ${fileNames.join(", ")}.`,
+      `The user has the following files in context: ${fileNames.join(", ")}.`
     );
   if (webSearch)
     parts.push("You may search the web to supplement your answer.");
@@ -153,6 +184,7 @@ async function apiChatStream(
   slug: string,
   orgId: string,
   docIds: string[],
+  navigate: (path: string) => void
 ): Promise<string> {
   const res = await fetch(`/api/orgs/${slug}/agent`, {
     method: "POST",
@@ -160,10 +192,16 @@ async function apiChatStream(
     credentials: "include",
     body: JSON.stringify({ messages, org_id: orgId, doc_ids: docIds }),
   });
+
+  if (res.status === 401) {
+    handle401(navigate);
+    throw new Error("Unauthorized");
+  }
+
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     throw new Error(
-      `/api/orgs/${slug}/agent ${res.status}${text ? `: ${text}` : ""}`,
+      `/api/orgs/${slug}/agent ${res.status}${text ? `: ${text}` : ""}`
     );
   }
   const reader = res.body?.getReader();
@@ -213,15 +251,15 @@ function renderContent(text: string) {
   return text
     .replace(
       /\*\*(.*?)\*\*/g,
-      '<strong class="text-white/90 font-normal">$1</strong>',
+      '<strong class="text-white/90 font-normal">$1</strong>'
     )
     .replace(
       /`(.*?)`/g,
-      '<code class="font-mono text-[10.5px] bg-white/[0.10] border border-white/[0.14] rounded px-1.5 py-0.5 text-white/75">$1</code>',
+      '<code class="font-mono text-[10.5px] bg-white/[0.10] border border-white/[0.14] rounded px-1.5 py-0.5 text-white/75">$1</code>'
     )
     .replace(
       /^• (.+)$/gm,
-      '<div class="flex gap-2 my-1"><span class="text-white/35 mt-0.5 flex-shrink-0">·</span><span>$1</span></div>',
+      '<div class="flex gap-2 my-1"><span class="text-white/35 mt-0.5 flex-shrink-0">·</span><span>$1</span></div>'
     )
     .split("\n\n")
     .map((p) => `<p class="mb-2 last:mb-0">${p}</p>`)
@@ -760,9 +798,6 @@ const SIDEBAR_MAX = 480;
 const SIDEBAR_DEFAULT = 230;
 
 // ── useResizableSidebar ────────────────────────────────────────
-// Mutates the sidebar DOM node directly during drag — no React
-// re-renders, no animation delay. State is only written on mouseup
-// so the rest of the UI stays in sync.
 function useResizableSidebar(defaultWidth: number) {
   const [width, setWidth] = useState(defaultWidth);
   const sidebarRef = useRef<HTMLElement | null>(null);
@@ -794,9 +829,8 @@ function useResizableSidebar(defaultWidth: number) {
       if (!isResizing.current || !sidebarRef.current) return;
       const newW = Math.min(
         SIDEBAR_MAX,
-        Math.max(SIDEBAR_MIN, startW.current + clientX - startX.current),
+        Math.max(SIDEBAR_MIN, startW.current + clientX - startX.current)
       );
-      // Direct DOM mutation — instant, no React overhead
       sidebarRef.current.style.width = `${newW}px`;
     };
 
@@ -808,7 +842,6 @@ function useResizableSidebar(defaultWidth: number) {
       isResizing.current = false;
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
-      // Sync React state once drag ends
       if (sidebarRef.current) {
         setWidth(sidebarRef.current.offsetWidth);
       }
@@ -829,286 +862,47 @@ function useResizableSidebar(defaultWidth: number) {
   return { width, sidebarRef, onMouseDown, onTouchStart };
 }
 
-// ── Main Component ─────────────────────────────────────────────
-export default function Workspace() {
-  const [showApiModal, setShowApiModal] = useState(false);
-  const [apiToken, setApiToken] = useState<string | null>(null);
-  const [apiCopied, setApiCopied] = useState(false);
-  const navigate = useNavigate();
-  const { slug } = useParams<{ slug: string }>();
+// ── SidebarContent (stable — defined OUTSIDE Workspace) ───────
+interface SidebarContentProps {
+  org: OrgState;
+  navigate: (path: string) => void;
+  fileInputRef: React.RefObject<HTMLInputElement>;
+  uploadLoading: boolean;
+  setSidebarOpen: (v: boolean) => void;
+  isMobile: boolean;
+  searchQ: string;
+  setSearchQ: (v: string) => void;
+  filesLoading: boolean;
+  filesError: string | null;
+  filteredSources: FileNode[];
+  onRetryFiles: () => void;
+  toggleCheck: (id: string) => void;
+  toggleFolder: (id: string) => void;
+  webSearch: boolean;
+  setWebSearch: React.Dispatch<React.SetStateAction<boolean>>;
+  driveConnected: boolean;
+}
 
-  const [org, setOrg] = useState<OrgState | null>(null);
-  const [orgLoading, setOrgLoading] = useState(true);
-  const [orgError, setOrgError] = useState<string | null>(null);
-
-  const [sources, setSources] = useState<FileNode[]>([]);
-  const [filesLoading, setFilesLoading] = useState(true);
-  const [filesError, setFilesError] = useState<string | null>(null);
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState("");
-  const [chatLoading, setChatLoading] = useState(false);
-  const [uploadLoading, setUploadLoading] = useState(false);
-  const [searchQ, setSearchQ] = useState("");
-  const [webSearch, setWebSearch] = useState(true);
-  const [driveConnected] = useState(false);
-  const [sessionTitle, setSessionTitle] = useState("Research Session");
-  const [editingTitle, setEditingTitle] = useState(false);
-
-  // ── Sidebar ────────────────────────────────────────────────
-  const {
-    width: sidebarWidth,
-    sidebarRef,
-    onMouseDown: onResizeMouseDown,
-    onTouchStart: onResizeTouchStart,
-  } = useResizableSidebar(SIDEBAR_DEFAULT);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [isMobile, setIsMobile] = useState(false);
-
-  const chatEndRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // ── Detect mobile ──────────────────────────────────────────
-  useEffect(() => {
-    const check = () => {
-      const mobile = window.innerWidth < 768;
-      setIsMobile(mobile);
-      if (mobile) setSidebarOpen(false);
-      else setSidebarOpen(true);
-    };
-    check();
-    window.addEventListener("resize", check);
-    return () => window.removeEventListener("resize", check);
-  }, []);
-
-  // ── Fetch org ──────────────────────────────────────────────
-  useEffect(() => {
-    if (!slug) {
-      setOrgError("No workspace slug found in URL.");
-      setOrgLoading(false);
-      return;
-    }
-    setOrgLoading(true);
-    apiFetchOrg(slug)
-      .then((data) => {
-        setOrg(data);
-        setSessionTitle(data.name ?? "Research Session");
-        setOrgError(null);
-      })
-      .catch((e) => setOrgError(e.message))
-      .finally(() => setOrgLoading(false));
-  }, [slug]);
-
-  useEffect(() => {
-    if (!org) return;
-    setFilesLoading(true);
-    apiFetchFiles(org.slug)
-      .then((tree) => {
-        setSources(tree);
-        setFilesError(null);
-      })
-      .catch((e) => setFilesError(e.message))
-      .finally(() => setFilesLoading(false));
-  }, [org]);
-
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, chatLoading]);
-
-  const flattenNodes = useCallback(
-    (nodes: FileNode[]): FileNode[] =>
-      nodes.flatMap((n) => [
-        n,
-        ...(n.children ? flattenNodes(n.children) : []),
-      ]),
-    [],
-  );
-
-  const openApiTokenModal = () => {
-    const token =
-      localStorage.getItem("auth_token") ??
-      localStorage.getItem("access_token") ??
-      sessionStorage.getItem("token");
-
-    if (!token) {
-      alert("No API token found");
-      return;
-    }
-
-    setApiToken(token);
-    setShowApiModal(true);
-  };
-
-  const toggleCheck = (id: string) => {
-    const toggle = (nodes: FileNode[]): FileNode[] =>
-      nodes.map((n) =>
-        n.id === id
-          ? { ...n, checked: !n.checked }
-          : n.children
-            ? { ...n, children: toggle(n.children) }
-            : n,
-      );
-    setSources((prev) => toggle(prev));
-  };
-
-  const toggleFolder = (id: string) => {
-    const toggle = (nodes: FileNode[]): FileNode[] =>
-      nodes.map((n) =>
-        n.id === id
-          ? { ...n, open: !n.open }
-          : n.children
-            ? { ...n, children: toggle(n.children) }
-            : n,
-      );
-    setSources((prev) => toggle(prev));
-  };
-
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !org) return;
-    setUploadLoading(true);
-    try {
-      await apiUploadFile(file, org.slug);
-      const tree = await apiFetchFiles(org.slug);
-      setSources(tree);
-    } catch (err: unknown) {
-      alert(
-        `Upload failed: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    } finally {
-      setUploadLoading(false);
-      e.target.value = "";
-    }
-  };
-
-  const activeContextFiles = flattenNodes(sources).filter(
-    (n) => n.type === "file" && n.checked,
-  );
-  const activeContextNames = activeContextFiles.map((n) => n.name);
-  const activeContextIds = activeContextFiles.map((n) => n.id);
-
-  const sendMessage = async () => {
-    const val = input.trim();
-    if (!val || chatLoading || !org) return;
-    setInput("");
-    const userMsg: Message = {
-      id: uid(),
-      role: "user",
-      content: val,
-      timestamp: nowStr(),
-    };
-    setMessages((prev) => [...prev, userMsg]);
-    setChatLoading(true);
-
-    try {
-      const agentMessages: AgentMessage[] = [];
-      const systemContent = buildSystemMessage(activeContextNames, webSearch);
-      if (systemContent)
-        agentMessages.push({ role: "system", content: systemContent });
-      setMessages((prev) => {
-        prev.forEach((m) =>
-          agentMessages.push({
-            role: m.role === "ai" ? "assistant" : "user",
-            content: m.content,
-          }),
-        );
-        return prev;
-      });
-      agentMessages.push({ role: "user", content: val });
-
-      const aiId = uid();
-      const aiMsg: Message = {
-        id: aiId,
-        role: "ai",
-        content: "",
-        timestamp: nowStr(),
-      };
-      setMessages((prev) => [...prev, aiMsg]);
-
-      await apiChatStream(
-        agentMessages,
-        (token) => {
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === aiId ? { ...m, content: m.content + token } : m,
-            ),
-          );
-        },
-        org.slug,
-        org.orgId,
-        activeContextIds,
-      );
-
-      setChatLoading(false);
-    } catch (err: unknown) {
-      const errMsg: Message = {
-        id: uid(),
-        role: "ai",
-        content: `⚠ Request failed: ${err instanceof Error ? err.message : String(err)}`,
-        timestamp: nowStr(),
-      };
-      setMessages((prev) => [...prev, errMsg]);
-      setChatLoading(false);
-    }
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage();
-    }
-  };
-
-  const filteredSources = searchQ
-    ? sources
-        .map((n) => ({
-          ...n,
-          open: true,
-          children: n.children?.filter((c) =>
-            c.name.toLowerCase().includes(searchQ.toLowerCase()),
-          ),
-        }))
-        .filter(
-          (n) =>
-            n.name.toLowerCase().includes(searchQ.toLowerCase()) ||
-            (n.children && n.children.length > 0),
-        )
-    : sources;
-
-  const lastMessage = messages[messages.length - 1];
-  const showTypingIndicator =
-    chatLoading &&
-    (!lastMessage || lastMessage.role !== "ai" || lastMessage.content === "");
-
-  if (orgLoading) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-[#0d0d0d]">
-        <div className="flex items-center gap-3 text-white/40">
-          {Icon.spinner}
-          <span className="font-mono text-[11px]">Loading workspace…</span>
-        </div>
-      </div>
-    );
-  }
-
-  if (orgError || !org) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-[#0d0d0d] flex-col gap-3">
-        <span className="font-mono text-[11px] text-red-300/70">
-          Failed to load workspace: {orgError ?? "unknown error"}
-        </span>
-        <button
-          onClick={() => navigate("/organizations")}
-          className="font-mono text-[10px] text-white/40 border border-white/[0.12] px-3 py-1.5 rounded hover:text-white/70 hover:border-white/25 transition-all duration-150"
-        >
-          ← Back to organizations
-        </button>
-      </div>
-    );
-  }
-
-  // ── Sidebar content (shared between mobile overlay & desktop) ──
-  const SidebarContent = () => (
+const SidebarContent = React.memo(function SidebarContent({
+  org,
+  navigate,
+  fileInputRef,
+  uploadLoading,
+  setSidebarOpen,
+  isMobile,
+  searchQ,
+  setSearchQ,
+  filesLoading,
+  filesError,
+  filteredSources,
+  onRetryFiles,
+  toggleCheck,
+  toggleFolder,
+  webSearch,
+  setWebSearch,
+  driveConnected,
+}: SidebarContentProps) {
+  return (
     <>
       {/* Nav identity strip */}
       <div className="flex items-center justify-between px-4 py-3.5 border-b border-white/[0.08] flex-shrink-0">
@@ -1135,7 +929,6 @@ export default function Workspace() {
           >
             {uploadLoading ? Icon.spinner : Icon.upload}
           </button>
-          {/* Close button (always visible, on mobile it's more prominent) */}
           <button
             onClick={() => setSidebarOpen(false)}
             title="Close panel"
@@ -1148,7 +941,7 @@ export default function Workspace() {
 
       <SectionLabel>Sources</SectionLabel>
 
-      {/* Search */}
+      {/* Search — stable input, no remount */}
       <div className="mx-3 mb-2 flex items-center gap-2 bg-white/[0.04] border border-white/[0.08] rounded-md px-3 py-1.5 focus-within:border-white/[0.18] transition-colors duration-150">
         <span className="text-white/30">{Icon.search}</span>
         <input
@@ -1177,14 +970,7 @@ export default function Workspace() {
               {filesError}
             </p>
             <button
-              onClick={() => {
-                setFilesError(null);
-                setFilesLoading(true);
-                apiFetchFiles(org!.slug)
-                  .then(setSources)
-                  .catch((e) => setFilesError(e.message))
-                  .finally(() => setFilesLoading(false));
-              }}
+              onClick={onRetryFiles}
               className="mt-1.5 font-mono text-[9px] text-red-300/60 hover:text-red-300 underline"
             >
               Retry
@@ -1262,6 +1048,325 @@ export default function Workspace() {
       </div>
     </>
   );
+});
+
+// ── Main Component ─────────────────────────────────────────────
+export default function Workspace() {
+  const [showApiModal, setShowApiModal] = useState(false);
+  const [apiToken, setApiToken] = useState<string | null>(null);
+  const [apiCopied, setApiCopied] = useState(false);
+  const navigate = useNavigate();
+  const { slug } = useParams<{ slug: string }>();
+
+  const [org, setOrg] = useState<OrgState | null>(null);
+  const [orgLoading, setOrgLoading] = useState(true);
+  const [orgError, setOrgError] = useState<string | null>(null);
+
+  const [sources, setSources] = useState<FileNode[]>([]);
+  const [filesLoading, setFilesLoading] = useState(true);
+  const [filesError, setFilesError] = useState<string | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [input, setInput] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
+  const [uploadLoading, setUploadLoading] = useState(false);
+  const [searchQ, setSearchQ] = useState("");
+  const [webSearch, setWebSearch] = useState(true);
+  const [driveConnected] = useState(false);
+  const [sessionTitle, setSessionTitle] = useState("Research Session");
+  const [editingTitle, setEditingTitle] = useState(false);
+
+  // ── Sidebar ────────────────────────────────────────────────
+  const {
+    width: sidebarWidth,
+    sidebarRef,
+    onMouseDown: onResizeMouseDown,
+    onTouchStart: onResizeTouchStart,
+  } = useResizableSidebar(SIDEBAR_DEFAULT);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [isMobile, setIsMobile] = useState(false);
+
+  const chatEndRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // ── Detect mobile ──────────────────────────────────────────
+  useEffect(() => {
+    const check = () => {
+      const mobile = window.innerWidth < 768;
+      setIsMobile(mobile);
+      if (mobile) setSidebarOpen(false);
+      else setSidebarOpen(true);
+    };
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+
+  // ── Fetch org ──────────────────────────────────────────────
+  useEffect(() => {
+    if (!slug) {
+      setOrgError("No workspace slug found in URL.");
+      setOrgLoading(false);
+      return;
+    }
+    setOrgLoading(true);
+    apiFetchOrg(slug, navigate)
+      .then((data) => {
+        setOrg(data);
+        setSessionTitle(data.name ?? "Research Session");
+        setOrgError(null);
+      })
+      .catch((e) => {
+        if (e.message !== "Unauthorized") setOrgError(e.message);
+      })
+      .finally(() => setOrgLoading(false));
+  }, [slug, navigate]);
+
+  // ── Fetch files ────────────────────────────────────────────
+  const fetchFiles = useCallback(
+    (orgSlug: string) => {
+      setFilesLoading(true);
+      setFilesError(null);
+      apiFetchFiles(orgSlug, navigate)
+        .then((tree) => setSources(tree))
+        .catch((e) => {
+          if (e.message !== "Unauthorized") setFilesError(e.message);
+        })
+        .finally(() => setFilesLoading(false));
+    },
+    [navigate]
+  );
+
+  useEffect(() => {
+    if (!org) return;
+    fetchFiles(org.slug);
+  }, [org, fetchFiles]);
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, chatLoading]);
+
+  const flattenNodes = useCallback(
+    (nodes: FileNode[]): FileNode[] =>
+      nodes.flatMap((n) => [
+        n,
+        ...(n.children ? flattenNodes(n.children) : []),
+      ]),
+    []
+  );
+
+  const openApiTokenModal = () => {
+    const token =
+      localStorage.getItem("auth_token") ??
+      localStorage.getItem("access_token") ??
+      sessionStorage.getItem("token");
+
+    if (!token) {
+      alert("No API token found");
+      return;
+    }
+
+    setApiToken(token);
+    setShowApiModal(true);
+  };
+
+  const toggleCheck = useCallback((id: string) => {
+    const toggle = (nodes: FileNode[]): FileNode[] =>
+      nodes.map((n) =>
+        n.id === id
+          ? { ...n, checked: !n.checked }
+          : n.children
+            ? { ...n, children: toggle(n.children) }
+            : n
+      );
+    setSources((prev) => toggle(prev));
+  }, []);
+
+  const toggleFolder = useCallback((id: string) => {
+    const toggle = (nodes: FileNode[]): FileNode[] =>
+      nodes.map((n) =>
+        n.id === id
+          ? { ...n, open: !n.open }
+          : n.children
+            ? { ...n, children: toggle(n.children) }
+            : n
+      );
+    setSources((prev) => toggle(prev));
+  }, []);
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !org) return;
+    setUploadLoading(true);
+    try {
+      await apiUploadFile(file, org.slug, navigate);
+      fetchFiles(org.slug);
+    } catch (err: unknown) {
+      if (err instanceof Error && err.message !== "Unauthorized") {
+        alert(`Upload failed: ${err.message}`);
+      }
+    } finally {
+      setUploadLoading(false);
+      e.target.value = "";
+    }
+  };
+
+  const activeContextFiles = flattenNodes(sources).filter(
+    (n) => n.type === "file" && n.checked
+  );
+  const activeContextNames = activeContextFiles.map((n) => n.name);
+  const activeContextIds = activeContextFiles.map((n) => n.id);
+
+  // ── Memoized filtered sources (stable reference for SidebarContent) ──
+  const filteredSources = useMemo(
+    () =>
+      searchQ
+        ? sources
+            .map((n) => ({
+              ...n,
+              open: true,
+              children: n.children?.filter((c) =>
+                c.name.toLowerCase().includes(searchQ.toLowerCase())
+              ),
+            }))
+            .filter(
+              (n) =>
+                n.name.toLowerCase().includes(searchQ.toLowerCase()) ||
+                (n.children && n.children.length > 0)
+            )
+        : sources,
+    [sources, searchQ]
+  );
+
+  const sendMessage = async () => {
+    const val = input.trim();
+    if (!val || chatLoading || !org) return;
+    setInput("");
+    const userMsg: Message = {
+      id: uid(),
+      role: "user",
+      content: val,
+      timestamp: nowStr(),
+    };
+    setMessages((prev) => [...prev, userMsg]);
+    setChatLoading(true);
+
+    try {
+      const agentMessages: AgentMessage[] = [];
+      const systemContent = buildSystemMessage(activeContextNames, webSearch);
+      if (systemContent)
+        agentMessages.push({ role: "system", content: systemContent });
+      setMessages((prev) => {
+        prev.forEach((m) =>
+          agentMessages.push({
+            role: m.role === "ai" ? "assistant" : "user",
+            content: m.content,
+          })
+        );
+        return prev;
+      });
+      agentMessages.push({ role: "user", content: val });
+
+      const aiId = uid();
+      const aiMsg: Message = {
+        id: aiId,
+        role: "ai",
+        content: "",
+        timestamp: nowStr(),
+      };
+      setMessages((prev) => [...prev, aiMsg]);
+
+      await apiChatStream(
+        agentMessages,
+        (token) => {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === aiId ? { ...m, content: m.content + token } : m
+            )
+          );
+        },
+        org.slug,
+        org.orgId,
+        activeContextIds,
+        navigate
+      );
+
+      setChatLoading(false);
+    } catch (err: unknown) {
+      if (err instanceof Error && err.message === "Unauthorized") {
+        setChatLoading(false);
+        return;
+      }
+      const errMsg: Message = {
+        id: uid(),
+        role: "ai",
+        content: `⚠ Request failed: ${err instanceof Error ? err.message : String(err)}`,
+        timestamp: nowStr(),
+      };
+      setMessages((prev) => [...prev, errMsg]);
+      setChatLoading(false);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  };
+
+  const lastMessage = messages[messages.length - 1];
+  const showTypingIndicator =
+    chatLoading &&
+    (!lastMessage || lastMessage.role !== "ai" || lastMessage.content === "");
+
+  if (orgLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-[#0d0d0d]">
+        <div className="flex items-center gap-3 text-white/40">
+          {Icon.spinner}
+          <span className="font-mono text-[11px]">Loading workspace…</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (orgError || !org) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-[#0d0d0d] flex-col gap-3">
+        <span className="font-mono text-[11px] text-red-300/70">
+          Failed to load workspace: {orgError ?? "unknown error"}
+        </span>
+        <button
+          onClick={() => navigate("/organizations")}
+          className="font-mono text-[10px] text-white/40 border border-white/[0.12] px-3 py-1.5 rounded hover:text-white/70 hover:border-white/25 transition-all duration-150"
+        >
+          ← Back to organizations
+        </button>
+      </div>
+    );
+  }
+
+  // ── Shared sidebar props ───────────────────────────────────
+  const sidebarProps: SidebarContentProps = {
+    org,
+    navigate,
+    fileInputRef,
+    uploadLoading,
+    setSidebarOpen,
+    isMobile,
+    searchQ,
+    setSearchQ,
+    filesLoading,
+    filesError,
+    filteredSources,
+    onRetryFiles: () => fetchFiles(org.slug),
+    toggleCheck,
+    toggleFolder,
+    webSearch,
+    setWebSearch,
+    driveConnected,
+  };
 
   return (
     <div
@@ -1304,7 +1409,6 @@ export default function Workspace() {
           LEFT SIDEBAR
       ══════════════════════════════════════════ */}
       {isMobile ? (
-        /* Mobile: slide-in drawer */
         <AnimatePresence>
           {sidebarOpen && (
             <motion.aside
@@ -1318,15 +1422,11 @@ export default function Workspace() {
                 width: Math.min(sidebarWidth, window.innerWidth * 0.85),
               }}
             >
-              <SidebarContent />
+              <SidebarContent {...sidebarProps} />
             </motion.aside>
           )}
         </AnimatePresence>
       ) : (
-        /* Desktop: resizable inline sidebar.
-           Width is mutated directly on the DOM node via sidebarRef during drag
-           so there is zero React re-render lag. AnimatePresence only controls
-           the open/close fade — never the drag width. */
         <AnimatePresence initial={false}>
           {sidebarOpen && (
             <motion.aside
@@ -1339,7 +1439,7 @@ export default function Workspace() {
               className="flex-shrink-0 flex flex-col bg-[#0d0d0d] overflow-hidden relative z-10"
               style={{ width: sidebarWidth }}
             >
-              <SidebarContent />
+              <SidebarContent {...sidebarProps} />
 
               {/* Drag handle */}
               <div
@@ -1375,7 +1475,6 @@ export default function Workspace() {
           className="flex items-center justify-between px-4 md:px-6 py-3.5 border-b border-white/[0.08] flex-shrink-0"
         >
           <div className="flex items-center gap-2 md:gap-3 min-w-0">
-            {/* Toggle sidebar button */}
             {!sidebarOpen && (
               <button
                 onClick={() => setSidebarOpen(true)}
@@ -1413,19 +1512,14 @@ export default function Workspace() {
           <div className="flex items-center gap-2">
             <button
               onClick={openApiTokenModal}
-              className="h-7 px-3 flex items-center gap-2 rounded border border-white/[0.10]
-      bg-transparent text-white/40 hover:text-white/70
-      hover:border-white/25 hover:bg-white/[0.05]
-      transition-all duration-150"
+              className="h-7 px-3 flex items-center gap-2 rounded border border-white/[0.10] bg-transparent text-white/40 hover:text-white/70 hover:border-white/25 hover:bg-white/[0.05] transition-all duration-150"
               title="API Token"
             >
               {Icon.api}
-
               <span className="font-mono text-[9px] tracking-widest uppercase">
                 API
               </span>
             </button>
-
             <button
               onClick={() => setMessages([])}
               className="w-6 h-6 flex items-center justify-center rounded border border-white/[0.08] bg-transparent text-white/35 hover:text-white/65 hover:border-white/20 hover:bg-white/[0.05] transition-all duration-150"
@@ -1463,7 +1557,7 @@ export default function Workspace() {
             {messages.map((msg) =>
               msg.role === "ai" && msg.content === "" ? null : (
                 <MessageBubble key={msg.id} msg={msg} />
-              ),
+              )
             )}
           </AnimatePresence>
           <AnimatePresence>
@@ -1549,10 +1643,10 @@ export default function Workspace() {
         </div>
       </main>
 
+      {/* ── API Token Modal ── */}
       <AnimatePresence>
         {showApiModal && (
           <>
-            {/* Backdrop */}
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -1560,31 +1654,22 @@ export default function Workspace() {
               className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm"
               onClick={() => setShowApiModal(false)}
             />
-
-            {/* Modal */}
             <motion.div
               initial={{ opacity: 0, scale: 0.96, y: 10 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.96, y: 10 }}
               transition={{ duration: 0.18 }}
-              className="fixed left-1/2 top-1/2 z-50
-          w-[92vw] max-w-lg
-          -translate-x-1/2 -translate-y-1/2
-          rounded-xl border border-white/[0.10]
-          bg-[#0d0d0d] shadow-2xl"
+              className="fixed left-1/2 top-1/2 z-50 w-[92vw] max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-xl border border-white/[0.10] bg-[#0d0d0d] shadow-2xl"
             >
-              {/* Header */}
               <div className="flex items-center justify-between px-5 py-4 border-b border-white/[0.08]">
                 <div>
                   <p className="text-[14px] text-white/85 font-light">
                     API Token
                   </p>
-
                   <p className="font-mono text-[9px] text-white/30 mt-1">
                     Use this token to access your APIs
                   </p>
                 </div>
-
                 <button
                   onClick={() => setShowApiModal(false)}
                   className="text-white/35 hover:text-white/70 transition-colors"
@@ -1592,47 +1677,26 @@ export default function Workspace() {
                   ✕
                 </button>
               </div>
-
-              {/* Body */}
               <div className="p-5 space-y-4">
-                <div
-                  className="rounded-lg border border-white/[0.08]
-            bg-white/[0.03] p-4 overflow-x-auto"
-                >
+                <div className="rounded-lg border border-white/[0.08] bg-white/[0.03] p-4 overflow-x-auto">
                   <code className="font-mono text-[11px] text-white/75 break-all">
                     {apiToken}
                   </code>
                 </div>
-
-                <div
-                  className="rounded-md border border-amber-400/15
-            bg-amber-400/[0.05] px-3 py-2"
-                >
+                <div className="rounded-md border border-amber-400/15 bg-amber-400/[0.05] px-3 py-2">
                   <p className="font-mono text-[9px] text-amber-200/60 leading-relaxed">
                     Keep this token secure. Anyone with this token can access
                     your authenticated APIs.
                   </p>
                 </div>
-
                 <div className="flex items-center justify-end gap-2">
                   <button
                     onClick={() => {
                       navigator.clipboard.writeText(apiToken || "");
-
                       setApiCopied(true);
-
-                      setTimeout(() => {
-                        setApiCopied(false);
-                      }, 1500);
+                      setTimeout(() => setApiCopied(false), 1500);
                     }}
-                    className="px-4 py-2 rounded-md border
-                border-white/[0.10]
-                bg-white/[0.04]
-                text-white/60 hover:text-white/85
-                hover:border-white/20
-                transition-all duration-150
-                font-mono text-[10px]
-                tracking-widest uppercase"
+                    className="px-4 py-2 rounded-md border border-white/[0.10] bg-white/[0.04] text-white/60 hover:text-white/85 hover:border-white/20 transition-all duration-150 font-mono text-[10px] tracking-widest uppercase"
                   >
                     {apiCopied ? "Copied" : "Copy Token"}
                   </button>
