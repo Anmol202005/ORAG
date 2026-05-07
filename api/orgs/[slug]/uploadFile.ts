@@ -25,6 +25,14 @@ const index = pc.index({ name: process.env.PINECONE_INDEX_NAME! });
 const TABLE = process.env.TABLE_NAME!;
 
 // ── Helpers (unchanged) ───────────────────────────────────────────────────────
+// Helper to batch array into chunks
+function batchArray<T>(arr: T[], size: number): T[][] {
+  const batches: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) {
+    batches.push(arr.slice(i, i + size));
+  }
+  return batches;
+}
 
 async function extractText(file: File): Promise<string> {
   const arrayBuffer = await file.arrayBuffer();
@@ -146,8 +154,11 @@ const handler = async (req: AuthenticatedRequest, res: VercelResponse) => {
     uploaded_at: new Date().toISOString(),
   }));
 
-  await index.upsertRecords({ records });
-
+  const batches = batchArray(records, 96);
+  for (const batch of batches) {
+    await index.upsertRecords({ records: batch });
+  }
+  
   // 2️⃣ Write document record to DynamoDB
   await createDocumentRecord(docId, file.name, orgId, chunks.length);
 
