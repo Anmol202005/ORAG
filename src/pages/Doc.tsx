@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from "react";
 import { motion, useInView } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 
-// ── Reveal wrapper (same as Landing) ─────────────────────────────────────────
+// ── Reveal wrapper ────────────────────────────────────────────────────────────
 function Reveal({
   children,
   delay = 0,
@@ -114,6 +114,8 @@ function SubHeading({
 
 // ── Sidebar nav data ──────────────────────────────────────────────────────────
 const NAV = [
+  { id: "features", label: "Features" },
+  { id: "how-it-works", label: "How it works" },
   { id: "overview", label: "Overview" },
   { id: "mcp-url", label: "MCP URL format" },
   { id: "auth", label: "Authentication" },
@@ -162,16 +164,72 @@ function Callout({
   );
 }
 
+// ── Feature card ──────────────────────────────────────────────────────────────
+function FeatureCard({
+  icon,
+  title,
+  description,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="border border-white/[0.08] rounded-lg p-5 bg-white/[0.02] hover:bg-white/[0.04] transition-colors duration-200">
+      <div className="mb-3 text-white/40">{icon}</div>
+      <h4 className="text-sm font-light text-white/80 mb-2 tracking-tight">{title}</h4>
+      <p className="text-xs font-light text-white/40 leading-relaxed">{description}</p>
+    </div>
+  );
+}
+
+// ── Step ──────────────────────────────────────────────────────────────────────
+function Step({
+  number,
+  title,
+  description,
+  last = false,
+}: {
+  number: string;
+  title: string;
+  description: string;
+  last?: boolean;
+}) {
+  return (
+    <div className="flex gap-5">
+      <div className="flex flex-col items-center">
+        <div className="w-8 h-8 rounded-full border border-white/[0.12] bg-white/[0.04] flex items-center justify-center shrink-0">
+          <span className="font-mono text-[10px] text-white/50">{number}</span>
+        </div>
+        {!last && <div className="w-px flex-1 bg-white/[0.06] mt-2 mb-0" />}
+      </div>
+      <div className={`pb-10 ${last ? "" : ""}`}>
+        <h4 className="text-sm font-light text-white/80 mb-1.5 tracking-tight">{title}</h4>
+        <p className="text-sm font-light text-white/40 leading-relaxed">{description}</p>
+      </div>
+    </div>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 export default function DocsPage() {
   const navigate = useNavigate();
   const [scrolled, setScrolled] = useState(false);
-  const [activeId, setActiveId] = useState("overview");
+  const [activeId, setActiveId] = useState("features");
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 24);
     window.addEventListener("scroll", onScroll);
     return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  // Hash-based scroll on mount
+  useEffect(() => {
+    const hash = window.location.hash.slice(1);
+    if (hash) {
+      const el = document.getElementById(hash);
+      if (el) setTimeout(() => el.scrollIntoView({ behavior: "smooth" }), 100);
+    }
   }, []);
 
   // Track active section
@@ -229,63 +287,32 @@ export default function DocsPage() {
           onClick={() => navigate("/")}
           className="flex items-center gap-2.5"
         >
-          <svg
-            width="18"
-            height="18"
-            viewBox="0 0 22 22"
-            fill="none"
-            className="opacity-60"
-          >
-            <rect
-              x="1"
-              y="1"
-              width="9"
-              height="9"
-              rx="1.5"
-              stroke="white"
-              strokeWidth="1.2"
-            />
-            <rect
-              x="12"
-              y="1"
-              width="9"
-              height="9"
-              rx="1.5"
-              stroke="white"
-              strokeWidth="1.2"
-            />
-            <rect
-              x="1"
-              y="12"
-              width="9"
-              height="9"
-              rx="1.5"
-              stroke="white"
-              strokeWidth="1.2"
-            />
-            <rect
-              x="12"
-              y="12"
-              width="9"
-              height="9"
-              rx="1.5"
-              stroke="white"
-              strokeWidth="1.2"
-              strokeDasharray="2 2"
-            />
+          <svg width="18" height="18" viewBox="0 0 22 22" fill="none" className="opacity-60">
+            <rect x="1" y="1" width="9" height="9" rx="1.5" stroke="white" strokeWidth="1.2" />
+            <rect x="12" y="1" width="9" height="9" rx="1.5" stroke="white" strokeWidth="1.2" />
+            <rect x="1" y="12" width="9" height="9" rx="1.5" stroke="white" strokeWidth="1.2" />
+            <rect x="12" y="12" width="9" height="9" rx="1.5" stroke="white" strokeWidth="1.2" strokeDasharray="2 2" />
           </svg>
-          <span className="text-lg font-light tracking-[0.2em] text-white">
-            ORAG
-          </span>
+          <span className="text-lg font-light tracking-[0.2em] text-white">ORAG</span>
         </button>
 
         <div className="hidden md:flex items-center gap-8">
-          {["Features", "How it works", "Docs"].map((label) => (
+          {[
+            { label: "Features", href: "/docs#features" },
+            { label: "How it works", href: "/docs#how-it-works" },
+            { label: "Docs", href: "/docs#overview" },
+          ].map(({ label, href }) => (
             <a
               key={label}
-              href="#"
+              href={href}
               className={`font-mono text-[10px] tracking-widest uppercase transition-colors duration-150
-                         ${label === "Docs" ? "text-white/70" : "text-white/35 hover:text-white/70"}`}
+                         ${
+                           (label === "Features" && activeId === "features") ||
+                           (label === "How it works" && activeId === "how-it-works") ||
+                           (label === "Docs" && !["features", "how-it-works"].includes(activeId))
+                             ? "text-white/70"
+                             : "text-white/35 hover:text-white/70"
+                         }`}
             >
               {label}
             </a>
@@ -353,6 +380,147 @@ export default function DocsPage() {
             </p>
           </motion.div>
 
+          {/* ── FEATURES ── */}
+          <Reveal>
+            <section id="features" className="mb-16 scroll-mt-28">
+              <SectionHeading id="features">Features</SectionHeading>
+              <p className="text-sm font-light text-white/45 leading-relaxed mb-8">
+                ORAG gives your AI agents instant, secure access to everything your organisation knows —
+                docs, wikis, runbooks, and more — via a single MCP endpoint.
+              </p>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+                <FeatureCard
+                  icon={
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.3">
+                      <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
+                    </svg>
+                  }
+                  title="Semantic search"
+                  description="Embedding-based vector search using Pinecone. Finds conceptually relevant chunks even when the exact keywords don't match."
+                />
+                <FeatureCard
+                  icon={
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.3">
+                      <rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                    </svg>
+                  }
+                  title="Org-scoped security"
+                  description="Every request is authenticated with a Bearer token and scoped to your organisation's slug. No cross-org data leakage possible."
+                />
+                <FeatureCard
+                  icon={
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.3">
+                      <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+                    </svg>
+                  }
+                  title="Streaming responses"
+                  description="Agent endpoint streams tokens via SSE so your UI stays responsive and users see results as they arrive."
+                />
+                <FeatureCard
+                  icon={
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.3">
+                      <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+                    </svg>
+                  }
+                  title="MCP-native protocol"
+                  description="Speaks standard Model Context Protocol over HTTP+SSE. Drop into Claude Code, Cursor, Windsurf, LangChain, or any custom agent without adapters."
+                />
+                <FeatureCard
+                  icon={
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.3">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" />
+                    </svg>
+                  }
+                  title="Multi-source ingestion"
+                  description="Index documents from Notion, Confluence, Google Drive, GitHub, or direct uploads. All sources are unified into a single searchable index."
+                />
+                <FeatureCard
+                  icon={
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.3">
+                      <circle cx="12" cy="12" r="3" /><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14" />
+                    </svg>
+                  }
+                  title="Real-time re-indexing"
+                  description="Documents are re-embedded automatically on update. Your agents always search the freshest version of your knowledge base."
+                />
+              </div>
+
+              <Callout type="tip">
+                All features are available from day one — no tier upgrades required. Start with a free API key and scale as your document count grows.
+              </Callout>
+            </section>
+          </Reveal>
+
+          {/* ── HOW IT WORKS ── */}
+          <Reveal>
+            <section id="how-it-works" className="mb-16 scroll-mt-28">
+              <SectionHeading id="how-it-works">How it works</SectionHeading>
+              <p className="text-sm font-light text-white/45 leading-relaxed mb-10">
+                From document upload to agent response in four steps.
+              </p>
+
+              <div className="mb-10">
+                <Step
+                  number="01"
+                  title="Ingest your documents"
+                  description="Connect a source (Notion, Google Drive, file upload, etc.) via the ORAG dashboard. Documents are chunked into overlapping segments optimised for retrieval."
+                />
+                <Step
+                  number="02"
+                  title="Embed & index"
+                  description="Each chunk is run through an embedding model and stored in your org's Pinecone namespace with full metadata — title, source, page number, and timestamp."
+                />
+                <Step
+                  number="03"
+                  title="Connect your agent"
+                  description="Point any MCP-compatible agent at your org's MCP URL with a Bearer token. The agent discovers the searchDocument tool automatically via the MCP handshake."
+                />
+                <Step
+                  number="04"
+                  title="Query at runtime"
+                  description="When the agent calls searchDocument, ORAG embeds the query, runs a cosine similarity search, and returns the top-k ranked chunks in milliseconds — ready to be injected into the model's context window."
+                  last
+                />
+              </div>
+
+              {/* Architecture diagram */}
+              <div className="border border-white/[0.08] rounded-lg p-6 bg-white/[0.02]">
+                <p className="font-mono text-[9px] tracking-widest uppercase text-white/25 mb-5">
+                  Architecture
+                </p>
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-center">
+                  {[
+                    { label: "Your agent", sub: "Claude Code / Cursor / custom" },
+                    null,
+                    { label: "ORAG MCP server", sub: "/api/orgs/{slug}/mcp" },
+                    null,
+                    { label: "Pinecone", sub: "Vector index" },
+                  ].map((item, i) =>
+                    item === null ? (
+                      <div key={i} className="text-white/20 font-mono text-xs hidden sm:block">→</div>
+                    ) : (
+                      <div
+                        key={i}
+                        className="border border-white/[0.08] rounded-lg px-4 py-3 bg-white/[0.03] min-w-[130px]"
+                      >
+                        <p className="text-xs font-light text-white/70 mb-1">{item.label}</p>
+                        <p className="font-mono text-[9px] text-white/25 tracking-wide">{item.sub}</p>
+                      </div>
+                    )
+                  )}
+                </div>
+                <div className="mt-5 pt-5 border-t border-white/[0.06]">
+                  <p className="text-xs font-light text-white/35 leading-relaxed">
+                    All traffic is HTTPS. The MCP server handles authentication, rate-limiting, and org isolation before
+                    forwarding the embedded query to Pinecone. Results are ranked by cosine similarity and returned as
+                    structured JSON chunks.
+                  </p>
+                </div>
+              </div>
+            </section>
+          </Reveal>
+
           {/* ── OVERVIEW ── */}
           <Reveal>
             <section id="overview" className="mb-16 scroll-mt-28">
@@ -371,7 +539,7 @@ export default function DocsPage() {
                 your knowledge base.
               </p>
               <p className="text-sm font-light text-white/45 leading-relaxed">
-              The MCP server is automatically scoped per organisation using the org slug in the URL.
+                The MCP server is automatically scoped per organisation using the org slug in the URL
                 and secured with the same JWT your frontend uses. Everything
                 goes through HTTPS; no inbound firewall rules required.
               </p>
@@ -451,10 +619,7 @@ export default function DocsPage() {
               </p>
 
               <SubHeading id="claude-code-global">Global config</SubHeading>
-              <CodeBlock
-                filename="~/.claude/claude_code_config.json"
-                lang="json"
-              >
+              <CodeBlock filename="~/.claude/claude_code_config.json" lang="json">
                 {`{
   "mcpServers": {
     "orag": {
@@ -468,9 +633,7 @@ export default function DocsPage() {
 }`}
               </CodeBlock>
 
-              <SubHeading id="claude-code-project">
-                Project-level config
-              </SubHeading>
+              <SubHeading id="claude-code-project">Project-level config</SubHeading>
               <p className="text-sm font-light text-white/45 leading-relaxed mb-2">
                 Commit a project-scoped config so every team member gets the
                 same server automatically:
@@ -482,7 +645,8 @@ export default function DocsPage() {
       "type": "http",
       "url": "https://your-orag-instance.com/api/orgs/acme-corp/mcp",
       "headers": {
-"Authorization": "Bearer \${process.env.ORAG_API_KEY}"      }
+        "Authorization": "Bearer \${process.env.ORAG_API_KEY}"
+      }
     }
   }
 }`}
@@ -493,9 +657,7 @@ export default function DocsPage() {
                 <IC>{"${process.env.VAR}"}</IC> at runtime.
               </Callout>
 
-              <SubHeading id="claude-code-verify">
-                Verify the connection
-              </SubHeading>
+              <SubHeading id="claude-code-verify">Verify the connection</SubHeading>
               <p className="text-sm font-light text-white/45 leading-relaxed mb-2">
                 After saving the config, restart Claude Code and run:
               </p>
@@ -558,9 +720,7 @@ claude mcp list
                 in the status bar when the server is connected.
               </p>
 
-              <SubHeading id="cursor-rules">
-                Cursor rules for auto-retrieval
-              </SubHeading>
+              <SubHeading id="cursor-rules">Cursor rules for auto-retrieval</SubHeading>
               <p className="text-sm font-light text-white/45 leading-relaxed mb-2">
                 Add a rule to <IC>.cursorrules</IC> so the model always checks
                 your knowledge base before answering:
@@ -583,10 +743,7 @@ claude mcp list
                 Windsurf (by Codeium) supports MCP via{" "}
                 <IC>~/.codeium/windsurf/mcp_config.json</IC>:
               </p>
-              <CodeBlock
-                filename="~/.codeium/windsurf/mcp_config.json"
-                lang="json"
-              >
+              <CodeBlock filename="~/.codeium/windsurf/mcp_config.json" lang="json">
                 {`{
   "mcpServers": {
     "orag": {
@@ -616,9 +773,7 @@ claude mcp list
                 protocol.
               </p>
 
-              <SubHeading id="custom-langchain">
-                LangChain (TypeScript)
-              </SubHeading>
+              <SubHeading id="custom-langchain">LangChain (TypeScript)</SubHeading>
               <CodeBlock filename="agent.ts" lang="typescript">
                 {`import { MultiServerMCPClient } from "@langchain/mcp-adapters";
 import { ChatAnthropic } from "@langchain/anthropic";
@@ -684,9 +839,9 @@ asyncio.run(main())`}
               <SubHeading id="custom-http">Raw HTTP / curl</SubHeading>
               <CodeBlock lang="bash">
                 {`# Initialise MCP session (SSE handshake)
-curl -N \
-  -H "Authorization: Bearer orag_live_xxxxxxxxxxxxxxxxxxxx" \
-  -H "Accept: text/event-stream" \
+curl -N \\
+  -H "Authorization: Bearer orag_live_xxxxxxxxxxxxxxxxxxxx" \\
+  -H "Accept: text/event-stream" \\
   "https://your-orag-instance.com/api/orgs/acme-corp/mcp"
 
 # Call searchDocument via JSON-RPC over SSE
@@ -703,12 +858,9 @@ curl -N \
                 The ORAG MCP server currently exposes one tool:
               </p>
 
-              {/* Tool card */}
               <div className="border border-white/[0.08] rounded-lg overflow-hidden bg-white/[0.02]">
                 <div className="flex items-center gap-3 px-5 py-4 border-b border-white/[0.07]">
-                  <span className="font-mono text-sm text-white/80">
-                    searchDocument
-                  </span>
+                  <span className="font-mono text-sm text-white/80">searchDocument</span>
                   <span className="font-mono text-[9px] tracking-widest uppercase text-white/25 border border-white/[0.08] px-2 py-0.5 rounded">
                     tool
                   </span>
@@ -719,64 +871,28 @@ curl -N \
                     most relevant document chunks ranked by cosine similarity.
                   </p>
 
-                  {/* Parameters table */}
                   <table className="w-full text-[12px] font-mono border-collapse">
                     <thead>
                       <tr className="border-b border-white/[0.06]">
-                        <th className="text-left text-white/30 font-normal py-2 pr-4 tracking-wider uppercase text-[9px]">
-                          Param
-                        </th>
-                        <th className="text-left text-white/30 font-normal py-2 pr-4 tracking-wider uppercase text-[9px]">
-                          Type
-                        </th>
-                        <th className="text-left text-white/30 font-normal py-2 tracking-wider uppercase text-[9px]">
-                          Description
-                        </th>
+                        <th className="text-left text-white/30 font-normal py-2 pr-4 tracking-wider uppercase text-[9px]">Param</th>
+                        <th className="text-left text-white/30 font-normal py-2 pr-4 tracking-wider uppercase text-[9px]">Type</th>
+                        <th className="text-left text-white/30 font-normal py-2 tracking-wider uppercase text-[9px]">Description</th>
                       </tr>
                     </thead>
                     <tbody>
                       {[
-                        {
-                          param: "query",
-                          type: "string",
-                          req: true,
-                          desc: "Natural language query to embed and search against.",
-                        },
-                        {
-                          param: "doc_ids",
-                          type: "string[]",
-                          req: false,
-                          desc: "Restrict search to specific document IDs. Empty array searches all.",
-                        },
-                        {
-                          param: "top_k",
-                          type: "number",
-                          req: false,
-                          desc: "Number of chunks to return. Default: 5. Max: 20.",
-                        },
-                        {
-                          param: "threshold",
-                          type: "number",
-                          req: false,
-                          desc: "Minimum similarity score 0–1. Default: 0.7.",
-                        },
+                        { param: "query", type: "string", req: true, desc: "Natural language query to embed and search against." },
+                        { param: "doc_ids", type: "string[]", req: false, desc: "Restrict search to specific document IDs. Empty array searches all." },
+                        { param: "top_k", type: "number", req: false, desc: "Number of chunks to return. Default: 5. Max: 20." },
+                        { param: "threshold", type: "number", req: false, desc: "Minimum similarity score 0–1. Default: 0.7." },
                       ].map((row) => (
-                        <tr
-                          key={row.param}
-                          className="border-b border-white/[0.04] last:border-0"
-                        >
+                        <tr key={row.param} className="border-b border-white/[0.04] last:border-0">
                           <td className="py-2.5 pr-4 text-white/70 align-top">
                             {row.param}
-                            {row.req && (
-                              <span className="text-red-400/60 ml-0.5">*</span>
-                            )}
+                            {row.req && <span className="text-red-400/60 ml-0.5">*</span>}
                           </td>
-                          <td className="py-2.5 pr-4 text-white/35 align-top">
-                            {row.type}
-                          </td>
-                          <td className="py-2.5 text-white/40 font-sans font-light align-top text-[12px]">
-                            {row.desc}
-                          </td>
+                          <td className="py-2.5 pr-4 text-white/35 align-top">{row.type}</td>
+                          <td className="py-2.5 text-white/40 font-sans font-light align-top text-[12px]">{row.desc}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -822,48 +938,18 @@ curl -N \
 
               <div className="space-y-3">
                 {[
-                  {
-                    type: "token",
-                    desc: "Streamed text chunk from the model.",
-                    example:
-                      '{ "type": "token", "content": "The onboarding doc states..." }',
-                  },
-                  {
-                    type: "tool_start",
-                    desc: "Agent is about to call a tool.",
-                    example:
-                      '{ "type": "tool_start", "name": "searchDocument", "input": { "query": "..." } }',
-                  },
-                  {
-                    type: "tool_end",
-                    desc: "Tool call completed; raw output included.",
-                    example:
-                      '{ "type": "tool_end", "name": "searchDocument", "output": [...] }',
-                  },
-                  {
-                    type: "done",
-                    desc: "Stream complete. No more events.",
-                    example: '{ "type": "done" }',
-                  },
-                  {
-                    type: "error",
-                    desc: "An error occurred.",
-                    example: '{ "type": "error", "message": "Token expired" }',
-                  },
+                  { type: "token", desc: "Streamed text chunk from the model.", example: '{ "type": "token", "content": "The onboarding doc states..." }' },
+                  { type: "tool_start", desc: "Agent is about to call a tool.", example: '{ "type": "tool_start", "name": "searchDocument", "input": { "query": "..." } }' },
+                  { type: "tool_end", desc: "Tool call completed; raw output included.", example: '{ "type": "tool_end", "name": "searchDocument", "output": [...] }' },
+                  { type: "done", desc: "Stream complete. No more events.", example: '{ "type": "done" }' },
+                  { type: "error", desc: "An error occurred.", example: '{ "type": "error", "message": "Token expired" }' },
                 ].map((ev) => (
-                  <div
-                    key={ev.type}
-                    className="border border-white/[0.07] rounded-lg p-4 bg-white/[0.015]"
-                  >
+                  <div key={ev.type} className="border border-white/[0.07] rounded-lg p-4 bg-white/[0.015]">
                     <div className="flex items-center gap-3 mb-2">
                       <IC>{ev.type}</IC>
-                      <span className="text-xs font-light text-white/35">
-                        {ev.desc}
-                      </span>
+                      <span className="text-xs font-light text-white/35">{ev.desc}</span>
                     </div>
-                    <pre className="font-mono text-[11px] text-white/40 overflow-x-auto">
-                      {ev.example}
-                    </pre>
+                    <pre className="font-mono text-[11px] text-white/40 overflow-x-auto">{ev.example}</pre>
                   </div>
                 ))}
               </div>
@@ -878,60 +964,24 @@ curl -N \
               <table className="w-full text-[12px] font-mono border-collapse border border-white/[0.08] rounded-lg overflow-hidden">
                 <thead>
                   <tr className="border-b border-white/[0.08] bg-white/[0.03]">
-                    <th className="text-left text-white/30 font-normal py-3 px-4 tracking-wider uppercase text-[9px]">
-                      Status
-                    </th>
-                    <th className="text-left text-white/30 font-normal py-3 px-4 tracking-wider uppercase text-[9px]">
-                      Message
-                    </th>
-                    <th className="text-left text-white/30 font-normal py-3 px-4 tracking-wider uppercase text-[9px]">
-                      Cause
-                    </th>
+                    <th className="text-left text-white/30 font-normal py-3 px-4 tracking-wider uppercase text-[9px]">Status</th>
+                    <th className="text-left text-white/30 font-normal py-3 px-4 tracking-wider uppercase text-[9px]">Message</th>
+                    <th className="text-left text-white/30 font-normal py-3 px-4 tracking-wider uppercase text-[9px]">Cause</th>
                   </tr>
                 </thead>
                 <tbody>
                   {[
-                    {
-                      status: "401",
-                      msg: "Authentication required",
-                      cause: "Missing Authorization header.",
-                    },
-                    {
-                      status: "401",
-                      msg: "Token expired",
-                      cause:
-                        "JWT or API token has expired. Generate a new one.",
-                    },
-                    {
-                      status: "401",
-                      msg: "Invalid token",
-                      cause: "Malformed or tampered token.",
-                    },
-                    {
-                      status: "404",
-                      msg: "Org not found",
-                      cause: "The org slug is invalid or you are not a member of the org.",
-                    },
-                    {
-                      status: "400",
-                      msg: "'messages' array required",
-                      cause: "Agent endpoint requires at least one message.",
-                    },
-                    {
-                      status: "405",
-                      msg: "Method not allowed",
-                      cause: "Only POST is accepted.",
-                    },
+                    { status: "401", msg: "Authentication required", cause: "Missing Authorization header." },
+                    { status: "401", msg: "Token expired", cause: "JWT or API token has expired. Generate a new one." },
+                    { status: "401", msg: "Invalid token", cause: "Malformed or tampered token." },
+                    { status: "404", msg: "Org not found", cause: "The org slug is invalid or you are not a member of the org." },
+                    { status: "400", msg: "'messages' array required", cause: "Agent endpoint requires at least one message." },
+                    { status: "405", msg: "Method not allowed", cause: "Only POST is accepted." },
                   ].map((row, i) => (
-                    <tr
-                      key={i}
-                      className="border-b border-white/[0.05] last:border-0"
-                    >
+                    <tr key={i} className="border-b border-white/[0.05] last:border-0">
                       <td className="py-3 px-4 text-white/60">{row.status}</td>
                       <td className="py-3 px-4 text-white/50">{row.msg}</td>
-                      <td className="py-3 px-4 text-white/35 font-sans font-light text-[12px]">
-                        {row.cause}
-                      </td>
+                      <td className="py-3 px-4 text-white/35 font-sans font-light text-[12px]">{row.cause}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -945,8 +995,7 @@ curl -N \
               <div
                 className="pointer-events-none absolute inset-0"
                 style={{
-                  background:
-                    "radial-gradient(ellipse 60% 60% at 50% 100%, rgba(255,255,255,0.03) 0%, transparent 70%)",
+                  background: "radial-gradient(ellipse 60% 60% at 50% 100%, rgba(255,255,255,0.03) 0%, transparent 70%)",
                 }}
               />
               <p className="font-mono text-[9px] tracking-widest uppercase text-white/25 mb-3">
@@ -970,7 +1019,7 @@ curl -N \
           </Reveal>
         </main>
 
-        {/* ── RIGHT SPACER (balances sidebar) ── */}
+        {/* ── RIGHT SPACER ── */}
         <div className="hidden xl:block w-16 shrink-0" />
       </div>
 
@@ -978,54 +1027,13 @@ curl -N \
       <footer className="relative z-10 border-t border-white/[0.07] px-8 md:px-20 lg:px-32 py-8 mt-8">
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
           <div className="flex items-center gap-2.5">
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 22 22"
-              fill="none"
-              className="opacity-35"
-            >
-              <rect
-                x="1"
-                y="1"
-                width="9"
-                height="9"
-                rx="1.5"
-                stroke="white"
-                strokeWidth="1.2"
-              />
-              <rect
-                x="12"
-                y="1"
-                width="9"
-                height="9"
-                rx="1.5"
-                stroke="white"
-                strokeWidth="1.2"
-              />
-              <rect
-                x="1"
-                y="12"
-                width="9"
-                height="9"
-                rx="1.5"
-                stroke="white"
-                strokeWidth="1.2"
-              />
-              <rect
-                x="12"
-                y="12"
-                width="9"
-                height="9"
-                rx="1.5"
-                stroke="white"
-                strokeWidth="1.2"
-                strokeDasharray="2 2"
-              />
+            <svg width="14" height="14" viewBox="0 0 22 22" fill="none" className="opacity-35">
+              <rect x="1" y="1" width="9" height="9" rx="1.5" stroke="white" strokeWidth="1.2" />
+              <rect x="12" y="1" width="9" height="9" rx="1.5" stroke="white" strokeWidth="1.2" />
+              <rect x="1" y="12" width="9" height="9" rx="1.5" stroke="white" strokeWidth="1.2" />
+              <rect x="12" y="12" width="9" height="9" rx="1.5" stroke="white" strokeWidth="1.2" strokeDasharray="2 2" />
             </svg>
-            <span className="text-sm font-light tracking-[0.2em] text-white/35">
-              ORAG
-            </span>
+            <span className="text-sm font-light tracking-[0.2em] text-white/35">ORAG</span>
           </div>
           <div className="flex flex-wrap gap-5">
             {["Privacy", "Terms", "Docs", "Status", "GitHub"].map((l) => (

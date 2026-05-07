@@ -35,10 +35,44 @@ const features = [
     body: "Connect your org's documents, wikis, and databases into a unified retrieval layer. ORAG indexes, chunks, and embeds everything so your models always have the right context.",
     icon: (
       <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-        <rect x="1" y="1" width="8" height="8" rx="1.2" stroke="white" strokeWidth="1.1" />
-        <rect x="11" y="1" width="8" height="8" rx="1.2" stroke="white" strokeWidth="1.1" strokeDasharray="2 1.5" />
-        <rect x="1" y="11" width="8" height="8" rx="1.2" stroke="white" strokeWidth="1.1" strokeDasharray="2 1.5" />
-        <rect x="11" y="11" width="8" height="8" rx="1.2" stroke="white" strokeWidth="1.1" />
+        <rect
+          x="1"
+          y="1"
+          width="8"
+          height="8"
+          rx="1.2"
+          stroke="white"
+          strokeWidth="1.1"
+        />
+        <rect
+          x="11"
+          y="1"
+          width="8"
+          height="8"
+          rx="1.2"
+          stroke="white"
+          strokeWidth="1.1"
+          strokeDasharray="2 1.5"
+        />
+        <rect
+          x="1"
+          y="11"
+          width="8"
+          height="8"
+          rx="1.2"
+          stroke="white"
+          strokeWidth="1.1"
+          strokeDasharray="2 1.5"
+        />
+        <rect
+          x="11"
+          y="11"
+          width="8"
+          height="8"
+          rx="1.2"
+          stroke="white"
+          strokeWidth="1.1"
+        />
         <line x1="9" y1="5" x2="11" y2="5" stroke="white" strokeWidth="1.1" />
         <line x1="5" y1="9" x2="5" y2="11" stroke="white" strokeWidth="1.1" />
         <line x1="15" y1="9" x2="15" y2="11" stroke="white" strokeWidth="1.1" />
@@ -54,10 +88,38 @@ const features = [
       <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
         <circle cx="10" cy="10" r="8.5" stroke="white" strokeWidth="1.1" />
         <circle cx="10" cy="10" r="3" stroke="white" strokeWidth="1.1" />
-        <line x1="10" y1="1.5" x2="10" y2="7" stroke="white" strokeWidth="1.1" />
-        <line x1="10" y1="13" x2="10" y2="18.5" stroke="white" strokeWidth="1.1" />
-        <line x1="1.5" y1="10" x2="7" y2="10" stroke="white" strokeWidth="1.1" />
-        <line x1="13" y1="10" x2="18.5" y2="10" stroke="white" strokeWidth="1.1" />
+        <line
+          x1="10"
+          y1="1.5"
+          x2="10"
+          y2="7"
+          stroke="white"
+          strokeWidth="1.1"
+        />
+        <line
+          x1="10"
+          y1="13"
+          x2="10"
+          y2="18.5"
+          stroke="white"
+          strokeWidth="1.1"
+        />
+        <line
+          x1="1.5"
+          y1="10"
+          x2="7"
+          y2="10"
+          stroke="white"
+          strokeWidth="1.1"
+        />
+        <line
+          x1="13"
+          y1="10"
+          x2="18.5"
+          y2="10"
+          stroke="white"
+          strokeWidth="1.1"
+        />
       </svg>
     ),
   },
@@ -67,8 +129,21 @@ const features = [
     body: "Role-based access across every knowledge base and MCP server. Audit logs, team workspaces, and SSO keep enterprise compliance teams happy.",
     icon: (
       <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-        <rect x="4" y="9" width="12" height="9" rx="1.5" stroke="white" strokeWidth="1.1" />
-        <path d="M7 9V6a3 3 0 0 1 6 0v3" stroke="white" strokeWidth="1.1" strokeLinecap="round" />
+        <rect
+          x="4"
+          y="9"
+          width="12"
+          height="9"
+          rx="1.5"
+          stroke="white"
+          strokeWidth="1.1"
+        />
+        <path
+          d="M7 9V6a3 3 0 0 1 6 0v3"
+          stroke="white"
+          strokeWidth="1.1"
+          strokeLinecap="round"
+        />
         <circle cx="10" cy="14" r="1.2" fill="white" />
       </svg>
     ),
@@ -79,18 +154,48 @@ const features = [
     body: "Full request tracing across retrievals, tool calls, and completions. Latency breakdowns, token usage, and retrieval quality scores — all in one view.",
     icon: (
       <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-        <polyline points="2,14 6,9 9,12 13,6 18,10" stroke="white" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round" />
-        <line x1="2" y1="17" x2="18" y2="17" stroke="white" strokeWidth="1.1" strokeOpacity="0.3" />
+        <polyline
+          points="2,14 6,9 9,12 13,6 18,10"
+          stroke="white"
+          strokeWidth="1.1"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <line
+          x1="2"
+          y1="17"
+          x2="18"
+          y2="17"
+          stroke="white"
+          strokeWidth="1.1"
+          strokeOpacity="0.3"
+        />
       </svg>
     ),
   },
 ];
 
 const steps = [
-  { num: "01", title: "Connect sources", body: "Link Notion, Confluence, S3, GitHub, or any custom data source." },
-  { num: "02", title: "Configure pipelines", body: "Choose chunking strategy, embedding model, and retrieval parameters." },
-  { num: "03", title: "Expose via MCP", body: "Your retrieval layer becomes a typed MCP server your agents can call." },
-  { num: "04", title: "Ship to production", body: "Deploy with one click. Monitor latency and quality from the dashboard." },
+  {
+    num: "01",
+    title: "Connect sources",
+    body: "Link Notion, Confluence, S3, GitHub, or any custom data source.",
+  },
+  {
+    num: "02",
+    title: "Configure pipelines",
+    body: "Choose chunking strategy, embedding model, and retrieval parameters.",
+  },
+  {
+    num: "03",
+    title: "Expose via MCP",
+    body: "Your retrieval layer becomes a typed MCP server your agents can call.",
+  },
+  {
+    num: "04",
+    title: "Ship to production",
+    body: "Deploy with one click. Monitor latency and quality from the dashboard.",
+  },
 ];
 
 const stats = [
@@ -115,40 +220,38 @@ function TerminalSnippet() {
 
       {"\n"}
       {"  "}
-      <span className="text-white/55">{"\"mcpServers\""}</span>
+      <span className="text-white/55">{'"mcpServers"'}</span>
       <span className="text-white/30">{": {"}</span>
 
       {"\n"}
       {"    "}
-      <span className="text-white/55">{"\"orag\""}</span>
+      <span className="text-white/55">{'"orag"'}</span>
       <span className="text-white/30">{": {"}</span>
 
       {"\n"}
       {"      "}
-      <span className="text-white/55">{"\"type\""}</span>
+      <span className="text-white/55">{'"type"'}</span>
       <span className="text-white/30">{": "}</span>
       <span className="text-white/65">{'"http"'}</span>
       <span className="text-white/30">{","}</span>
 
       {"\n"}
       {"      "}
-      <span className="text-white/55">{"\"url\""}</span>
+      <span className="text-white/55">{'"url"'}</span>
       <span className="text-white/30">{": "}</span>
       <span className="text-white/65">
-        {
-          '"https://your-orag-instance.com/api/orgs/acme-corp/mcp"'
-        }
+        {'"https://your-orag-instance.com/api/orgs/acme-corp/mcp"'}
       </span>
       <span className="text-white/30">{","}</span>
 
       {"\n"}
       {"      "}
-      <span className="text-white/55">{"\"headers\""}</span>
+      <span className="text-white/55">{'"headers"'}</span>
       <span className="text-white/30">{": {"}</span>
 
       {"\n"}
       {"        "}
-      <span className="text-white/55">{"\"Authorization\""}</span>
+      <span className="text-white/55">{'"Authorization"'}</span>
       <span className="text-white/30">{": "}</span>
       <span className="text-white/65">
         {'"Bearer orag_live_xxxxxxxxxxxxxxxxxxxx"'}
@@ -185,7 +288,6 @@ export default function Landing() {
 
   return (
     <div className="relative min-h-screen text-white overflow-x-hidden">
-
       {/* ── Background grid ── */}
       <div
         className="pointer-events-none fixed inset-0 z-0"
@@ -203,7 +305,8 @@ export default function Landing() {
         className="pointer-events-none fixed top-0 left-0 right-0 z-0"
         style={{
           height: "50vh",
-          background: "radial-gradient(ellipse 70% 50% at 50% 0%, rgba(255,255,255,0.04) 0%, transparent 70%)",
+          background:
+            "radial-gradient(ellipse 70% 50% at 50% 0%, rgba(255,255,255,0.04) 0%, transparent 70%)",
         }}
       />
 
@@ -220,25 +323,70 @@ export default function Landing() {
       >
         {/* Logo */}
         <div className="flex items-center gap-2.5">
-          <svg width="18" height="18" viewBox="0 0 22 22" fill="none" className="opacity-60">
-            <rect x="1" y="1" width="9" height="9" rx="1.5" stroke="white" strokeWidth="1.2" />
-            <rect x="12" y="1" width="9" height="9" rx="1.5" stroke="white" strokeWidth="1.2" />
-            <rect x="1" y="12" width="9" height="9" rx="1.5" stroke="white" strokeWidth="1.2" />
-            <rect x="12" y="12" width="9" height="9" rx="1.5" stroke="white" strokeWidth="1.2" strokeDasharray="2 2" />
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 22 22"
+            fill="none"
+            className="opacity-60"
+          >
+            <rect
+              x="1"
+              y="1"
+              width="9"
+              height="9"
+              rx="1.5"
+              stroke="white"
+              strokeWidth="1.2"
+            />
+            <rect
+              x="12"
+              y="1"
+              width="9"
+              height="9"
+              rx="1.5"
+              stroke="white"
+              strokeWidth="1.2"
+            />
+            <rect
+              x="1"
+              y="12"
+              width="9"
+              height="9"
+              rx="1.5"
+              stroke="white"
+              strokeWidth="1.2"
+            />
+            <rect
+              x="12"
+              y="12"
+              width="9"
+              height="9"
+              rx="1.5"
+              stroke="white"
+              strokeWidth="1.2"
+              strokeDasharray="2 2"
+            />
           </svg>
-          <span className="text-lg font-light tracking-[0.2em] text-white">ORAG</span>
+          <span className="text-lg font-light tracking-[0.2em] text-white">
+            ORAG
+          </span>
         </div>
 
         {/* Nav links */}
         <div className="hidden md:flex items-center gap-8">
-          {["Features", "How it works", "Docs"].map((label) => (
+          {[
+            { label: "Features", href: "/docs#features" },
+            { label: "How it works", href: "/docs#how-it-works" },
+            { label: "Docs", href: "/docs#overview" },
+          ].map((item) => (
             <a
-              key={label}
-              href={label === "Docs" ? "/docs" : "#"}
+              key={item.label}
+              href={item.href}
               className="font-mono text-[10px] tracking-widest uppercase text-white/35
-                         hover:text-white/70 transition-colors duration-150"
+                 hover:text-white/70 transition-colors duration-150"
             >
-              {label}
+              {item.label}
             </a>
           ))}
         </div>
@@ -257,9 +405,10 @@ export default function Landing() {
       {/* ══════════════════════════════════════════
           HERO
       ══════════════════════════════════════════ */}
-      <section className="relative z-10 min-h-screen flex flex-col items-center justify-center
-                           px-6 text-center pt-24 pb-32">
-
+      <section
+        className="relative z-10 min-h-screen flex flex-col items-center justify-center
+                           px-6 text-center pt-24 pb-32"
+      >
         {/* Badge */}
         <motion.div
           initial={{ opacity: 0, y: 14 }}
@@ -281,7 +430,8 @@ export default function Landing() {
           transition={{ duration: 0.55, delay: 0.18, ease: [0.22, 1, 0.36, 1] }}
           className="text-5xl md:text-7xl lg:text-8xl font-light tracking-tight leading-[1.05] mb-6 max-w-4xl"
         >
-          Your org's knowledge,<br />
+          Your org's knowledge,
+          <br />
           <span className="text-white/40">ready for any model.</span>
         </motion.h1>
 
@@ -292,8 +442,9 @@ export default function Landing() {
           transition={{ duration: 0.5, delay: 0.28 }}
           className="text-base md:text-lg font-light text-white/40 max-w-xl leading-relaxed mb-12"
         >
-          ORAG is an organizational RAG and MCP platform that connects your internal
-          data to AI pipelines — with enterprise access controls built in from day one.
+          ORAG is an organizational RAG and MCP platform that connects your
+          internal data to AI pipelines — with enterprise access controls built
+          in from day one.
         </motion.p>
 
         {/* CTA group */}
@@ -327,7 +478,9 @@ export default function Landing() {
           transition={{ duration: 0.4, delay: 1.1 }}
           className="absolute bottom-10 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1.5"
         >
-          <span className="font-mono text-[9px] tracking-widest uppercase text-white/20">Scroll</span>
+          <span className="font-mono text-[9px] tracking-widest uppercase text-white/20">
+            Scroll
+          </span>
           <motion.div
             animate={{ y: [0, 4, 0] }}
             transition={{ repeat: Infinity, duration: 1.6, ease: "easeInOut" }}
@@ -343,8 +496,12 @@ export default function Landing() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
           {stats.map((s, i) => (
             <Reveal key={s.label} delay={i * 0.07}>
-              <p className="text-2xl md:text-3xl font-light tracking-tight mb-1">{s.value}</p>
-              <p className="font-mono text-[10px] tracking-widest uppercase text-white/30">{s.label}</p>
+              <p className="text-2xl md:text-3xl font-light tracking-tight mb-1">
+                {s.value}
+              </p>
+              <p className="font-mono text-[10px] tracking-widest uppercase text-white/30">
+                {s.label}
+              </p>
             </Reveal>
           ))}
         </div>
@@ -366,8 +523,10 @@ export default function Landing() {
         <div className="grid md:grid-cols-2 gap-px border border-white/[0.07] rounded-lg overflow-hidden">
           {features.map((f, i) => (
             <Reveal key={f.tag} delay={i * 0.08}>
-              <div className="group p-8 bg-white/[0.015] hover:bg-white/[0.035] transition-colors duration-200
-                              border-white/[0.07] h-full">
+              <div
+                className="group p-8 bg-white/[0.015] hover:bg-white/[0.035] transition-colors duration-200
+                              border-white/[0.07] h-full"
+              >
                 <div className="flex items-center gap-3 mb-5">
                   <span className="opacity-50 group-hover:opacity-80 transition-opacity duration-200">
                     {f.icon}
@@ -376,8 +535,12 @@ export default function Landing() {
                     {f.tag}
                   </span>
                 </div>
-                <h3 className="text-xl font-light tracking-tight mb-3">{f.title}</h3>
-                <p className="text-sm font-light text-white/40 leading-relaxed">{f.body}</p>
+                <h3 className="text-xl font-light tracking-tight mb-3">
+                  {f.title}
+                </h3>
+                <p className="text-sm font-light text-white/40 leading-relaxed">
+                  {f.body}
+                </p>
               </div>
             </Reveal>
           ))}
@@ -393,7 +556,8 @@ export default function Landing() {
             How it works
           </p>
           <h2 className="text-4xl md:text-5xl font-light tracking-tight max-w-lg">
-            From source to inference<br />
+            From source to inference
+            <br />
             <span className="text-white/35">in four steps.</span>
           </h2>
         </Reveal>
@@ -401,17 +565,23 @@ export default function Landing() {
         <div className="space-y-0 divide-y divide-white/[0.06]">
           {steps.map((s, i) => (
             <Reveal key={s.num} delay={i * 0.07}>
-              <div className="group flex items-start gap-10 py-8 hover:bg-white/[0.02]
-                              -mx-4 px-4 transition-colors duration-150">
+              <div
+                className="group flex items-start gap-10 py-8 hover:bg-white/[0.02]
+                              -mx-4 px-4 transition-colors duration-150"
+              >
                 <span className="font-mono text-[11px] tracking-widest text-white/20 mt-0.5 shrink-0 w-8">
                   {s.num}
                 </span>
                 <div className="flex-1">
                   <h4 className="text-lg font-light mb-1.5">{s.title}</h4>
-                  <p className="text-sm font-light text-white/35 leading-relaxed">{s.body}</p>
+                  <p className="text-sm font-light text-white/35 leading-relaxed">
+                    {s.body}
+                  </p>
                 </div>
-                <span className="font-mono text-[11px] text-white/15 group-hover:text-white/35
-                                 transition-colors duration-150 shrink-0 mt-0.5">
+                <span
+                  className="font-mono text-[11px] text-white/15 group-hover:text-white/35
+                                 transition-colors duration-150 shrink-0 mt-0.5"
+                >
                   →
                 </span>
               </div>
@@ -430,12 +600,14 @@ export default function Landing() {
               Developer first
             </p>
             <h2 className="text-3xl md:text-4xl font-light tracking-tight mb-5">
-              MCP in minutes,<br />not months.
+              MCP in minutes,
+              <br />
+              not months.
             </h2>
             <p className="text-sm font-light text-white/40 leading-relaxed mb-8 max-w-sm">
               One config file is all it takes to expose your entire knowledge
-              base as a fully typed MCP server — complete with streaming,
-              auth, and observability out of the box.
+              base as a fully typed MCP server — complete with streaming, auth,
+              and observability out of the box.
             </p>
             <a
               href="/docs"
@@ -470,13 +642,16 @@ export default function Landing() {
       ══════════════════════════════════════════ */}
       <section className="relative z-10 px-8 md:px-20 lg:px-32 py-28 border-t border-white/[0.07]">
         <Reveal>
-          <div className="border border-white/[0.08] rounded-lg p-12 md:p-16 bg-white/[0.02] text-center
-                          relative overflow-hidden">
+          <div
+            className="border border-white/[0.08] rounded-lg p-12 md:p-16 bg-white/[0.02] text-center
+                          relative overflow-hidden"
+          >
             {/* Inner glow */}
             <div
               className="pointer-events-none absolute inset-0"
               style={{
-                background: "radial-gradient(ellipse 60% 60% at 50% 100%, rgba(255,255,255,0.04) 0%, transparent 70%)",
+                background:
+                  "radial-gradient(ellipse 60% 60% at 50% 100%, rgba(255,255,255,0.04) 0%, transparent 70%)",
               }}
             />
             <p className="font-mono text-[10px] tracking-widest uppercase text-white/30 mb-4">
@@ -506,13 +681,54 @@ export default function Landing() {
       <footer className="relative z-10 border-t border-white/[0.07] px-8 md:px-20 lg:px-32 py-10">
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
           <div className="flex items-center gap-2.5">
-            <svg width="16" height="16" viewBox="0 0 22 22" fill="none" className="opacity-40">
-              <rect x="1" y="1" width="9" height="9" rx="1.5" stroke="white" strokeWidth="1.2" />
-              <rect x="12" y="1" width="9" height="9" rx="1.5" stroke="white" strokeWidth="1.2" />
-              <rect x="1" y="12" width="9" height="9" rx="1.5" stroke="white" strokeWidth="1.2" />
-              <rect x="12" y="12" width="9" height="9" rx="1.5" stroke="white" strokeWidth="1.2" strokeDasharray="2 2" />
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 22 22"
+              fill="none"
+              className="opacity-40"
+            >
+              <rect
+                x="1"
+                y="1"
+                width="9"
+                height="9"
+                rx="1.5"
+                stroke="white"
+                strokeWidth="1.2"
+              />
+              <rect
+                x="12"
+                y="1"
+                width="9"
+                height="9"
+                rx="1.5"
+                stroke="white"
+                strokeWidth="1.2"
+              />
+              <rect
+                x="1"
+                y="12"
+                width="9"
+                height="9"
+                rx="1.5"
+                stroke="white"
+                strokeWidth="1.2"
+              />
+              <rect
+                x="12"
+                y="12"
+                width="9"
+                height="9"
+                rx="1.5"
+                stroke="white"
+                strokeWidth="1.2"
+                strokeDasharray="2 2"
+              />
             </svg>
-            <span className="text-sm font-light tracking-[0.2em] text-white/40">ORAG</span>
+            <span className="text-sm font-light tracking-[0.2em] text-white/40">
+              ORAG
+            </span>
           </div>
 
           <div className="flex flex-wrap gap-6">
@@ -533,7 +749,6 @@ export default function Landing() {
           </p>
         </div>
       </footer>
-
     </div>
   );
 }
