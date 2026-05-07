@@ -24,13 +24,6 @@ interface Message {
   sources?: string[];
 }
 
-interface Artifact {
-  id: string;
-  type: "Summary" | "Flashcards" | "Mind Map" | "Report";
-  title: string;
-  timestamp: string;
-}
-
 interface OrgState {
   orgId: string;
   name: string;
@@ -41,7 +34,6 @@ interface OrgState {
 // ── API helpers ────────────────────────────────────────────────
 
 function getAuthHeaders(): HeadersInit {
-  // Adjust the key name to match wherever you store your token
   const token =
     localStorage.getItem("auth_token") ??
     localStorage.getItem("access_token") ??
@@ -58,14 +50,8 @@ async function apiFetchOrg(slug: string): Promise<OrgState> {
     headers: getAuthHeaders(),
     credentials: "include",
   });
-  
   const text = await res.text();
-  console.log("apiFetchOrg raw response:", text.slice(0, 200));
-  console.log("apiFetchOrg status:", res.status);
-  console.log("apiFetchOrg content-type:", res.headers.get("content-type"));
-  
   if (!res.ok) throw new Error(`/api/orgs/${slug} ${res.status}`);
-  
   try {
     const data = JSON.parse(text);
     return data.org as OrgState;
@@ -100,7 +86,6 @@ async function apiFetchFiles(slug: string): Promise<FileNode[]> {
     checked: false,
   }));
 
-  // Wrap everything in a single "Documents" folder, mirroring the old shape
   return [
     {
       id: "__org_docs__",
@@ -116,17 +101,13 @@ async function apiFetchFiles(slug: string): Promise<FileNode[]> {
 async function apiUploadFile(file: File, slug: string): Promise<FileNode> {
   const authHeaders = getAuthHeaders() as Record<string, string>;
 
-  // Phase 1: Upload directly to Vercel Blob (bypasses Vercel's 4.5MB limit)
   const blob = await upload(file.name, file, {
     access: "private",
     clientPayload: file.name,
     handleUploadUrl: `/api/orgs/${slug}/uploadFile`,
-    // upload() will internally call your endpoint with the auth headers
-    // for the token exchange — pass them here
     headers: authHeaders,
   });
 
-  // Phase 2: Trigger processing (extract → chunk → Pinecone → DynamoDB)
   const res = await fetch(`/api/orgs/${slug}/uploadFile`, {
     method: "POST",
     headers: {
@@ -169,16 +150,15 @@ function buildSystemMessage(fileNames: string[], webSearch: boolean): string {
 async function apiChatStream(
   messages: AgentMessage[],
   onToken: (token: string) => void,
-  slug: string, // ← was orgId, now slug for the URL
-  orgId: string, // ← still needed for the body
+  slug: string,
+  orgId: string,
   docIds: string[],
 ): Promise<string> {
   const res = await fetch(`/api/orgs/${slug}/agent`, {
-    // ← new endpoint
     method: "POST",
     headers: getAuthHeaders(),
     credentials: "include",
-    body: JSON.stringify({ messages, org_id: orgId, doc_ids: docIds }), // ← org_id not orgId
+    body: JSON.stringify({ messages, org_id: orgId, doc_ids: docIds }),
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
@@ -208,35 +188,15 @@ async function apiChatStream(
           full += evt.content;
           onToken(evt.content);
         }
-        // Surface agent errors as thrown exceptions
         if (evt.type === "error") {
           throw new Error(evt.message ?? "Agent error");
         }
       } catch (e) {
-        // Re-throw real errors, skip malformed JSON
         if (e instanceof Error && e.message !== "Unexpected token") throw e;
       }
     }
   }
   return full;
-}
-
-const ARTIFACTS_KEY = "workspace_artifacts";
-function stubLoadArtifacts(): Artifact[] {
-  try {
-    return JSON.parse(localStorage.getItem(ARTIFACTS_KEY) ?? "[]");
-  } catch {
-    return [];
-  }
-}
-function stubSaveArtifact(a: Artifact) {
-  const list = stubLoadArtifacts();
-  list.unshift(a);
-  localStorage.setItem(ARTIFACTS_KEY, JSON.stringify(list.slice(0, 50)));
-}
-function stubDeleteArtifact(id: string) {
-  const list = stubLoadArtifacts().filter((a) => a.id !== id);
-  localStorage.setItem(ARTIFACTS_KEY, JSON.stringify(list));
 }
 
 function nowStr() {
@@ -270,6 +230,18 @@ function renderContent(text: string) {
 
 // ── SVG Icons ──────────────────────────────────────────────────
 const Icon = {
+  api: (
+    <svg
+      viewBox="0 0 14 14"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      className="w-3 h-3"
+    >
+      <rect x="2" y="2" width="10" height="10" rx="2" />
+      <path d="M5 5h4M5 7h4M5 9h2" />
+    </svg>
+  ),
   folder: (
     <svg
       viewBox="0 0 14 14"
@@ -375,61 +347,6 @@ const Icon = {
       <polygon points="6,1 11,10 1,10" />
     </svg>
   ),
-  summary: (
-    <svg
-      viewBox="0 0 14 14"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.4"
-      className="w-3.5 h-3.5"
-    >
-      <rect x="1.5" y="1.5" width="11" height="11" rx="1.5" />
-      <line x1="4" y1="5" x2="10" y2="5" />
-      <line x1="4" y1="7" x2="8" y2="7" />
-      <line x1="4" y1="9" x2="9" y2="9" />
-    </svg>
-  ),
-  flash: (
-    <svg
-      viewBox="0 0 14 14"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.4"
-      className="w-3.5 h-3.5"
-    >
-      <rect x="1.5" y="3.5" width="11" height="8" rx="1.5" />
-      <line x1="7" y1="3.5" x2="7" y2="11.5" />
-    </svg>
-  ),
-  mindmap: (
-    <svg
-      viewBox="0 0 14 14"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.4"
-      className="w-3.5 h-3.5"
-    >
-      <circle cx="7" cy="7" r="1.5" />
-      <line x1="7" y1="5.5" x2="7" y2="2" />
-      <line x1="7" y1="8.5" x2="7" y2="12" />
-      <line x1="5.5" y1="7" x2="2" y2="7" />
-      <line x1="8.5" y1="7" x2="12" y2="7" />
-    </svg>
-  ),
-  report: (
-    <svg
-      viewBox="0 0 14 14"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.4"
-      className="w-3.5 h-3.5"
-    >
-      <path d="M2.5 1.5h7l2 2v9h-9z" />
-      <line x1="5" y1="6" x2="9.5" y2="6" />
-      <line x1="5" y1="8" x2="8" y2="8" />
-      <line x1="5" y1="10" x2="9" y2="10" />
-    </svg>
-  ),
   spinner: (
     <svg
       viewBox="0 0 14 14"
@@ -445,17 +362,6 @@ const Icon = {
         strokeDasharray="12 22"
         strokeLinecap="round"
       />
-    </svg>
-  ),
-  trash: (
-    <svg
-      viewBox="0 0 12 12"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      className="w-2.5 h-2.5"
-    >
-      <path d="M2 3h8M5 3V2h2v1M4 3l.5 7h3l.5-7" />
     </svg>
   ),
   copy: (
@@ -529,19 +435,45 @@ const Icon = {
       <line x1="3" y1="6" x2="11" y2="6" />
     </svg>
   ),
-};
-
-const artifactColors: Record<Artifact["type"], string> = {
-  Summary: "text-blue-300/80 border-blue-400/20 bg-blue-400/[0.07]",
-  Flashcards: "text-emerald-300/80 border-emerald-400/20 bg-emerald-400/[0.07]",
-  "Mind Map": "text-amber-300/80 border-amber-400/20 bg-amber-400/[0.07]",
-  Report: "text-violet-300/80 border-violet-400/20 bg-violet-400/[0.07]",
-};
-const artifactDots: Record<Artifact["type"], string> = {
-  Summary: "bg-blue-300/70",
-  Flashcards: "bg-emerald-400/70",
-  "Mind Map": "bg-amber-300/70",
-  Report: "bg-violet-300/70",
+  panelClose: (
+    <svg
+      viewBox="0 0 14 14"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      className="w-3 h-3"
+    >
+      <rect x="1" y="1" width="12" height="12" rx="2" />
+      <line x1="5" y1="1" x2="5" y2="13" />
+      <polyline points="2.5,5 4,7 2.5,9" />
+    </svg>
+  ),
+  panelOpen: (
+    <svg
+      viewBox="0 0 14 14"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      className="w-3 h-3"
+    >
+      <rect x="1" y="1" width="12" height="12" rx="2" />
+      <line x1="5" y1="1" x2="5" y2="13" />
+      <polyline points="3.5,5 2,7 3.5,9" />
+    </svg>
+  ),
+  menu: (
+    <svg
+      viewBox="0 0 14 14"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      className="w-3.5 h-3.5"
+    >
+      <line x1="2" y1="4" x2="12" y2="4" />
+      <line x1="2" y1="7" x2="12" y2="7" />
+      <line x1="2" y1="10" x2="12" y2="10" />
+    </svg>
+  ),
 };
 
 // ── Checkbox ───────────────────────────────────────────────────
@@ -656,13 +588,7 @@ function TreeNode({
 }
 
 // ── MessageBubble ──────────────────────────────────────────────
-function MessageBubble({
-  msg,
-  onSave,
-}: {
-  msg: Message;
-  onSave: (title: string) => void;
-}) {
+function MessageBubble({ msg }: { msg: Message }) {
   const [hovered, setHovered] = useState(false);
   const [copied, setCopied] = useState(false);
   const handleCopy = () => {
@@ -697,13 +623,11 @@ function MessageBubble({
           </>
         )}
       </div>
-
       <div
         className={`rounded-lg border px-4 py-3 text-[13px] font-light leading-relaxed text-white/85
           ${msg.role === "user" ? "bg-white/[0.06] border-white/[0.12] ml-6" : "bg-white/[0.02] border-white/[0.08]"}`}
         dangerouslySetInnerHTML={{ __html: renderContent(msg.content) }}
       />
-
       {msg.sources && (
         <div className="flex gap-1.5 px-1 flex-wrap">
           {msg.sources.map((s) => (
@@ -716,7 +640,6 @@ function MessageBubble({
           ))}
         </div>
       )}
-
       <AnimatePresence>
         {hovered && (
           <motion.div
@@ -726,14 +649,6 @@ function MessageBubble({
             transition={{ duration: 0.12 }}
             className="flex gap-1.5 px-1"
           >
-            {msg.role === "ai" && (
-              <button
-                onClick={() => onSave(msg.content.slice(0, 32) + "…")}
-                className="font-mono text-[9px] tracking-widest uppercase text-white/40 border border-white/[0.12] bg-transparent px-2.5 py-1 rounded hover:text-white/70 hover:border-white/25 transition-all duration-150"
-              >
-                Save
-              </button>
-            )}
             <button
               onClick={handleCopy}
               className="font-mono text-[9px] tracking-widest uppercase text-white/40 border border-white/[0.12] bg-transparent px-2.5 py-1 rounded hover:text-white/70 hover:border-white/25 transition-all duration-150"
@@ -752,7 +667,6 @@ function MessageBubble({
   );
 }
 
-// ── Sidebar section label ──────────────────────────────────────
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
     <p className="font-mono text-[9px] tracking-widest uppercase text-white/30 px-4 pt-3 pb-1.5">
@@ -761,7 +675,6 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
-// ── Typing Indicator ───────────────────────────────────────────
 function TypingIndicator() {
   return (
     <motion.div
@@ -785,7 +698,6 @@ function TypingIndicator() {
           thinking
         </motion.span>
       </div>
-
       <div className="bg-white/[0.02] border border-white/[0.08] rounded-lg px-5 py-4 w-fit flex items-center gap-5">
         <div className="relative w-5 h-5 shrink-0">
           <svg viewBox="0 0 20 20" className="w-5 h-5 absolute inset-0">
@@ -817,7 +729,6 @@ function TypingIndicator() {
             ))}
           </svg>
         </div>
-
         <div className="flex flex-col gap-1.5">
           {[
             { w: "w-28", delay: 0 },
@@ -843,22 +754,97 @@ function TypingIndicator() {
   );
 }
 
+// ── Constants ──────────────────────────────────────────────────
+const SIDEBAR_MIN = 180;
+const SIDEBAR_MAX = 480;
+const SIDEBAR_DEFAULT = 230;
+
+// ── useResizableSidebar ────────────────────────────────────────
+// Mutates the sidebar DOM node directly during drag — no React
+// re-renders, no animation delay. State is only written on mouseup
+// so the rest of the UI stays in sync.
+function useResizableSidebar(defaultWidth: number) {
+  const [width, setWidth] = useState(defaultWidth);
+  const sidebarRef = useRef<HTMLElement | null>(null);
+  const isResizing = useRef(false);
+  const startX = useRef(0);
+  const startW = useRef(defaultWidth);
+
+  const onMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    isResizing.current = true;
+    startX.current = e.clientX;
+    startW.current = sidebarRef.current
+      ? sidebarRef.current.offsetWidth
+      : width;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  };
+
+  const onTouchStart = (e: React.TouchEvent) => {
+    isResizing.current = true;
+    startX.current = e.touches[0].clientX;
+    startW.current = sidebarRef.current
+      ? sidebarRef.current.offsetWidth
+      : width;
+  };
+
+  useEffect(() => {
+    const onMove = (clientX: number) => {
+      if (!isResizing.current || !sidebarRef.current) return;
+      const newW = Math.min(
+        SIDEBAR_MAX,
+        Math.max(SIDEBAR_MIN, startW.current + clientX - startX.current),
+      );
+      // Direct DOM mutation — instant, no React overhead
+      sidebarRef.current.style.width = `${newW}px`;
+    };
+
+    const onMouseMove = (e: MouseEvent) => onMove(e.clientX);
+    const onTouchMove = (e: TouchEvent) => onMove(e.touches[0].clientX);
+
+    const onUp = () => {
+      if (!isResizing.current) return;
+      isResizing.current = false;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      // Sync React state once drag ends
+      if (sidebarRef.current) {
+        setWidth(sidebarRef.current.offsetWidth);
+      }
+    };
+
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onUp);
+    window.addEventListener("touchmove", onTouchMove, { passive: false });
+    window.addEventListener("touchend", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onUp);
+      window.removeEventListener("touchmove", onTouchMove);
+      window.removeEventListener("touchend", onUp);
+    };
+  }, []);
+
+  return { width, sidebarRef, onMouseDown, onTouchStart };
+}
+
 // ── Main Component ─────────────────────────────────────────────
 export default function Workspace() {
+  const [showApiModal, setShowApiModal] = useState(false);
+  const [apiToken, setApiToken] = useState<string | null>(null);
+  const [apiCopied, setApiCopied] = useState(false);
   const navigate = useNavigate();
   const { slug } = useParams<{ slug: string }>();
 
-  // ── Org state ──────────────────────────────────────────────
   const [org, setOrg] = useState<OrgState | null>(null);
   const [orgLoading, setOrgLoading] = useState(true);
   const [orgError, setOrgError] = useState<string | null>(null);
 
-  // ── Workspace state ────────────────────────────────────────
   const [sources, setSources] = useState<FileNode[]>([]);
   const [filesLoading, setFilesLoading] = useState(true);
   const [filesError, setFilesError] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [input, setInput] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
   const [uploadLoading, setUploadLoading] = useState(false);
@@ -868,11 +854,34 @@ export default function Workspace() {
   const [sessionTitle, setSessionTitle] = useState("Research Session");
   const [editingTitle, setEditingTitle] = useState(false);
 
+  // ── Sidebar ────────────────────────────────────────────────
+  const {
+    width: sidebarWidth,
+    sidebarRef,
+    onMouseDown: onResizeMouseDown,
+    onTouchStart: onResizeTouchStart,
+  } = useResizableSidebar(SIDEBAR_DEFAULT);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [isMobile, setIsMobile] = useState(false);
+
   const chatEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // ── Fetch org on mount ─────────────────────────────────────
+  // ── Detect mobile ──────────────────────────────────────────
+  useEffect(() => {
+    const check = () => {
+      const mobile = window.innerWidth < 768;
+      setIsMobile(mobile);
+      if (mobile) setSidebarOpen(false);
+      else setSidebarOpen(true);
+    };
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+
+  // ── Fetch org ──────────────────────────────────────────────
   useEffect(() => {
     if (!slug) {
       setOrgError("No workspace slug found in URL.");
@@ -890,11 +899,10 @@ export default function Workspace() {
       .finally(() => setOrgLoading(false));
   }, [slug]);
 
-  // ── Fetch files once org is ready ─────────────────────────
   useEffect(() => {
     if (!org) return;
     setFilesLoading(true);
-    apiFetchFiles(org.slug) // ← pass slug
+    apiFetchFiles(org.slug)
       .then((tree) => {
         setSources(tree);
         setFilesError(null);
@@ -903,9 +911,6 @@ export default function Workspace() {
       .finally(() => setFilesLoading(false));
   }, [org]);
 
-  useEffect(() => {
-    setArtifacts(stubLoadArtifacts());
-  }, []);
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, chatLoading]);
@@ -918,6 +923,21 @@ export default function Workspace() {
       ]),
     [],
   );
+
+  const openApiTokenModal = () => {
+    const token =
+      localStorage.getItem("auth_token") ??
+      localStorage.getItem("access_token") ??
+      sessionStorage.getItem("token");
+
+    if (!token) {
+      alert("No API token found");
+      return;
+    }
+
+    setApiToken(token);
+    setShowApiModal(true);
+  };
 
   const toggleCheck = (id: string) => {
     const toggle = (nodes: FileNode[]): FileNode[] =>
@@ -949,7 +969,6 @@ export default function Workspace() {
     setUploadLoading(true);
     try {
       await apiUploadFile(file, org.slug);
-      // Refetch the full list — avoids duplicate optimistic insert
       const tree = await apiFetchFiles(org.slug);
       setSources(tree);
     } catch (err: unknown) {
@@ -1012,12 +1031,11 @@ export default function Workspace() {
           setMessages((prev) =>
             prev.map((m) =>
               m.id === aiId ? { ...m, content: m.content + token } : m,
-              
             ),
           );
         },
-        org.slug, // ← for the URL
-        org.orgId, // ← for the body
+        org.slug,
+        org.orgId,
         activeContextIds,
       );
 
@@ -1041,27 +1059,6 @@ export default function Workspace() {
     }
   };
 
-  const saveArtifact = (type: Artifact["type"], title: string) => {
-    const a: Artifact = { id: uid(), type, title, timestamp: nowStr() };
-    stubSaveArtifact(a);
-    setArtifacts((prev) => [a, ...prev]);
-  };
-
-  const deleteArtifact = (id: string) => {
-    stubDeleteArtifact(id);
-    setArtifacts((prev) => prev.filter((a) => a.id !== id));
-  };
-
-  const runTool = (type: Artifact["type"]) => {
-    const titleMap: Record<Artifact["type"], string> = {
-      Summary: "Key themes · AI session",
-      Flashcards: `Flashcards · ${messages.length} msgs`,
-      "Mind Map": "Concept map · workspace",
-      Report: "Full report · session",
-    };
-    saveArtifact(type, titleMap[type]);
-  };
-
   const filteredSources = searchQ
     ? sources
         .map((n) => ({
@@ -1083,7 +1080,6 @@ export default function Workspace() {
     chatLoading &&
     (!lastMessage || lastMessage.role !== "ai" || lastMessage.content === "");
 
-  // ── Org loading / error gates ──────────────────────────────
   if (orgLoading) {
     return (
       <div className="flex h-screen items-center justify-center bg-[#0d0d0d]">
@@ -1111,7 +1107,162 @@ export default function Workspace() {
     );
   }
 
-  // ── Render ─────────────────────────────────────────────────
+  // ── Sidebar content (shared between mobile overlay & desktop) ──
+  const SidebarContent = () => (
+    <>
+      {/* Nav identity strip */}
+      <div className="flex items-center justify-between px-4 py-3.5 border-b border-white/[0.08] flex-shrink-0">
+        <button
+          onClick={() => navigate("/organizations")}
+          className="flex items-center gap-2 group"
+        >
+          <span className="text-white/30 group-hover:text-white/60 transition-colors duration-150">
+            {Icon.back}
+          </span>
+          <div className="flex items-center gap-1.5">
+            {Icon.logo}
+            <span className="text-sm font-light tracking-[0.18em] text-white/50 group-hover:text-white/70 transition-colors duration-150">
+              ORAG
+            </span>
+          </div>
+        </button>
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploadLoading}
+            title="Upload file"
+            className="w-6 h-6 flex items-center justify-center rounded border border-white/[0.10] bg-transparent text-white/40 hover:text-white/70 hover:border-white/25 hover:bg-white/[0.05] transition-all duration-150 disabled:opacity-30"
+          >
+            {uploadLoading ? Icon.spinner : Icon.upload}
+          </button>
+          {/* Close button (always visible, on mobile it's more prominent) */}
+          <button
+            onClick={() => setSidebarOpen(false)}
+            title="Close panel"
+            className={`w-6 h-6 flex items-center justify-center rounded border border-white/[0.10] bg-transparent text-white/40 hover:text-white/70 hover:border-white/25 hover:bg-white/[0.05] transition-all duration-150 ${isMobile ? "opacity-100" : "opacity-60 hover:opacity-100"}`}
+          >
+            {Icon.panelClose}
+          </button>
+        </div>
+      </div>
+
+      <SectionLabel>Sources</SectionLabel>
+
+      {/* Search */}
+      <div className="mx-3 mb-2 flex items-center gap-2 bg-white/[0.04] border border-white/[0.08] rounded-md px-3 py-1.5 focus-within:border-white/[0.18] transition-colors duration-150">
+        <span className="text-white/30">{Icon.search}</span>
+        <input
+          type="text"
+          placeholder="Search files…"
+          value={searchQ}
+          onChange={(e) => setSearchQ(e.target.value)}
+          className="flex-1 bg-transparent border-none outline-none font-mono text-[10px] text-white/70 placeholder-white/25 caret-white/60"
+        />
+      </div>
+
+      {/* File tree */}
+      <div className="flex-1 overflow-y-auto">
+        {filesLoading && (
+          <div className="flex items-center gap-2 px-4 py-4 text-white/35">
+            {Icon.spinner}
+            <span className="font-mono text-[9px]">Loading…</span>
+          </div>
+        )}
+        {filesError && (
+          <div className="mx-3 my-2 rounded-md border border-red-400/25 bg-red-400/[0.07] px-3 py-2">
+            <p className="font-mono text-[9px] text-red-300/80">
+              Failed to load files
+            </p>
+            <p className="font-mono text-[8px] text-red-300/50 mt-0.5">
+              {filesError}
+            </p>
+            <button
+              onClick={() => {
+                setFilesError(null);
+                setFilesLoading(true);
+                apiFetchFiles(org!.slug)
+                  .then(setSources)
+                  .catch((e) => setFilesError(e.message))
+                  .finally(() => setFilesLoading(false));
+              }}
+              className="mt-1.5 font-mono text-[9px] text-red-300/60 hover:text-red-300 underline"
+            >
+              Retry
+            </button>
+          </div>
+        )}
+        {!filesLoading && !filesError && filteredSources.length === 0 && (
+          <p className="font-mono text-[9px] text-white/25 italic px-4 py-3">
+            No files — upload one above
+          </p>
+        )}
+        <AnimatePresence>
+          {filteredSources.map((node) => (
+            <TreeNode
+              key={node.id}
+              node={node}
+              onToggleCheck={toggleCheck}
+              onToggleFolder={toggleFolder}
+            />
+          ))}
+        </AnimatePresence>
+
+        <div className="mt-3">
+          <SectionLabel>Quick Sources</SectionLabel>
+          <div
+            className={`flex items-center gap-2 py-[5px] px-4 cursor-pointer transition-colors duration-150 relative ${webSearch ? "bg-white/[0.05]" : "hover:bg-white/[0.03]"}`}
+            onClick={() => setWebSearch((v) => !v)}
+          >
+            {webSearch && (
+              <span className="absolute left-0 top-0 bottom-0 w-[2px] bg-white/50 rounded-r-full" />
+            )}
+            <span
+              className={`${webSearch ? "text-white/60" : "text-white/30"} transition-colors`}
+            >
+              {Icon.web}
+            </span>
+            <span
+              className={`font-mono text-[10px] flex-1 transition-colors ${webSearch ? "text-white/70" : "text-white/40"}`}
+            >
+              Web Search
+            </span>
+            <Checkbox
+              checked={webSearch}
+              onChange={() => setWebSearch((v) => !v)}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Integrations */}
+      <div className="border-t border-white/[0.08] p-3 flex-shrink-0 space-y-1.5">
+        <SectionLabel>Integrations</SectionLabel>
+        {[
+          {
+            icon: Icon.drive,
+            label: "Google Drive",
+            connected: driveConnected,
+          },
+          { icon: Icon.web, label: "Notion", connected: false },
+        ].map(({ icon, label, connected }) => (
+          <button
+            key={label}
+            disabled
+            className="w-full flex items-center gap-2.5 bg-white/[0.03] border border-white/[0.07] rounded-md px-3 py-2 hover:bg-white/[0.06] transition-all duration-150 opacity-40 cursor-not-allowed"
+          >
+            <span className="text-white/40">{icon}</span>
+            <span className="font-mono text-[9.5px] text-white/50">
+              {label}
+            </span>
+            <span
+              className={`ml-auto w-1.5 h-1.5 rounded-full flex-shrink-0 ${connected ? "bg-emerald-400/70" : "bg-white/20"}`}
+            />
+          </button>
+        ))}
+      </div>
+    </>
+  );
+
   return (
     <div
       className="flex h-screen text-white overflow-hidden"
@@ -1134,170 +1285,107 @@ export default function Workspace() {
         }}
       />
 
-      {/* ══════════════════════════════════════════
-          LEFT SIDEBAR — Sources
-      ══════════════════════════════════════════ */}
-      <aside className="w-[230px] flex-shrink-0 border-r border-white/[0.08] flex flex-col bg-[#0d0d0d] overflow-hidden relative z-10">
-        {/* Nav identity strip */}
-        <div className="flex items-center justify-between px-4 py-3.5 border-b border-white/[0.08]">
-          <button
-            onClick={() => navigate("/organizations")}
-            className="flex items-center gap-2 group"
-          >
-            <span className="text-white/30 group-hover:text-white/60 transition-colors duration-150">
-              {Icon.back}
-            </span>
-            <div className="flex items-center gap-1.5">
-              {Icon.logo}
-              <span className="text-sm font-light tracking-[0.18em] text-white/50 group-hover:text-white/70 transition-colors duration-150">
-                ORAG
-              </span>
-            </div>
-          </button>
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploadLoading}
-            title="Upload file"
-            className="w-6 h-6 flex items-center justify-center rounded border border-white/[0.10]
-              bg-transparent text-white/40 hover:text-white/70 hover:border-white/25 hover:bg-white/[0.05]
-              transition-all duration-150 disabled:opacity-30"
-          >
-            {uploadLoading ? Icon.spinner : Icon.upload}
-          </button>
-        </div>
-
-        {/* Section: Sources */}
-        <SectionLabel>Sources</SectionLabel>
-
-        {/* Search */}
-        <div className="mx-3 mb-2 flex items-center gap-2 bg-white/[0.04] border border-white/[0.08] rounded-md px-3 py-1.5 focus-within:border-white/[0.18] transition-colors duration-150">
-          <span className="text-white/30">{Icon.search}</span>
-          <input
-            type="text"
-            placeholder="Search files…"
-            value={searchQ}
-            onChange={(e) => setSearchQ(e.target.value)}
-            className="flex-1 bg-transparent border-none outline-none font-mono text-[10px] text-white/70 placeholder-white/25 caret-white/60"
+      {/* ── Mobile overlay backdrop ── */}
+      <AnimatePresence>
+        {isMobile && sidebarOpen && (
+          <motion.div
+            key="backdrop"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="fixed inset-0 z-20 bg-black/60 backdrop-blur-sm"
+            onClick={() => setSidebarOpen(false)}
           />
-        </div>
+        )}
+      </AnimatePresence>
 
-        {/* File tree */}
-        <div className="flex-1 overflow-y-auto">
-          {filesLoading && (
-            <div className="flex items-center gap-2 px-4 py-4 text-white/35">
-              {Icon.spinner}
-              <span className="font-mono text-[9px]">Loading…</span>
-            </div>
-          )}
-          {filesError && (
-            <div className="mx-3 my-2 rounded-md border border-red-400/25 bg-red-400/[0.07] px-3 py-2">
-              <p className="font-mono text-[9px] text-red-300/80">
-                Failed to load files
-              </p>
-              <p className="font-mono text-[8px] text-red-300/50 mt-0.5">
-                {filesError}
-              </p>
-              <button
-                onClick={() => {
-                  setFilesError(null);
-                  setFilesLoading(true);
-                  apiFetchFiles(org!.slug) // ← pass slug
-                    .then(setSources)
-                    .catch((e) => setFilesError(e.message))
-                    .finally(() => setFilesLoading(false));
-                }}
-                className="mt-1.5 font-mono text-[9px] text-red-300/60 hover:text-red-300 underline"
-              >
-                Retry
-              </button>
-            </div>
-          )}
-          {!filesLoading && !filesError && filteredSources.length === 0 && (
-            <p className="font-mono text-[9px] text-white/25 italic px-4 py-3">
-              No files — upload one above
-            </p>
-          )}
-          <AnimatePresence>
-            {filteredSources.map((node) => (
-              <TreeNode
-                key={node.id}
-                node={node}
-                onToggleCheck={toggleCheck}
-                onToggleFolder={toggleFolder}
-              />
-            ))}
-          </AnimatePresence>
-
-          {/* Web search toggle */}
-          <div className="mt-3">
-            <SectionLabel>Quick Sources</SectionLabel>
-            <div
-              className={`flex items-center gap-2 py-[5px] px-4 cursor-pointer transition-colors duration-150 relative
-                ${webSearch ? "bg-white/[0.05]" : "hover:bg-white/[0.03]"}`}
-              onClick={() => setWebSearch((v) => !v)}
+      {/* ══════════════════════════════════════════
+          LEFT SIDEBAR
+      ══════════════════════════════════════════ */}
+      {isMobile ? (
+        /* Mobile: slide-in drawer */
+        <AnimatePresence>
+          {sidebarOpen && (
+            <motion.aside
+              key="mobile-sidebar"
+              initial={{ x: "-100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "-100%" }}
+              transition={{ type: "spring", stiffness: 300, damping: 30 }}
+              className="fixed left-0 top-0 bottom-0 z-30 flex flex-col bg-[#0d0d0d] border-r border-white/[0.08] overflow-hidden"
+              style={{
+                width: Math.min(sidebarWidth, window.innerWidth * 0.85),
+              }}
             >
-              {webSearch && (
-                <span className="absolute left-0 top-0 bottom-0 w-[2px] bg-white/50 rounded-r-full" />
-              )}
-              <span
-                className={`${webSearch ? "text-white/60" : "text-white/30"} transition-colors`}
-              >
-                {Icon.web}
-              </span>
-              <span
-                className={`font-mono text-[10px] flex-1 transition-colors ${webSearch ? "text-white/70" : "text-white/40"}`}
-              >
-                Web Search
-              </span>
-              <Checkbox
-                checked={webSearch}
-                onChange={() => setWebSearch((v) => !v)}
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Integrations */}
-        <div className="border-t border-white/[0.08] p-3 flex-shrink-0 space-y-1.5">
-          <SectionLabel>Integrations</SectionLabel>
-          {[
-            {
-              icon: Icon.drive,
-              label: "Google Drive",
-              connected: driveConnected,
-            },
-            { icon: Icon.web, label: "Notion", connected: false },
-          ].map(({ icon, label, connected }) => (
-            <button
-              key={label}
-              disabled
-              className="w-full flex items-center gap-2.5 bg-white/[0.03] border border-white/[0.07] rounded-md px-3 py-2
-                hover:bg-white/[0.06] transition-all duration-150 opacity-40 cursor-not-allowed"
+              <SidebarContent />
+            </motion.aside>
+          )}
+        </AnimatePresence>
+      ) : (
+        /* Desktop: resizable inline sidebar.
+           Width is mutated directly on the DOM node via sidebarRef during drag
+           so there is zero React re-render lag. AnimatePresence only controls
+           the open/close fade — never the drag width. */
+        <AnimatePresence initial={false}>
+          {sidebarOpen && (
+            <motion.aside
+              key="desktop-sidebar"
+              ref={sidebarRef as React.Ref<HTMLElement>}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.15 }}
+              className="flex-shrink-0 flex flex-col bg-[#0d0d0d] overflow-hidden relative z-10"
+              style={{ width: sidebarWidth }}
             >
-              <span className="text-white/40">{icon}</span>
-              <span className="font-mono text-[9.5px] text-white/50">
-                {label}
-              </span>
-              <span
-                className={`ml-auto w-1.5 h-1.5 rounded-full flex-shrink-0 ${connected ? "bg-emerald-400/70" : "bg-white/20"}`}
-              />
-            </button>
-          ))}
-        </div>
-      </aside>
+              <SidebarContent />
+
+              {/* Drag handle */}
+              <div
+                onMouseDown={onResizeMouseDown}
+                onTouchStart={onResizeTouchStart}
+                className="absolute right-0 top-0 bottom-0 w-[6px] cursor-col-resize group z-20 flex items-center justify-center"
+                title="Drag to resize"
+              >
+                <div className="w-[1px] h-full bg-white/[0.08] group-hover:bg-white/40 group-active:bg-white/60 transition-colors duration-100" />
+                <div className="absolute flex flex-col gap-[3px] opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+                  {[0, 1, 2].map((i) => (
+                    <div
+                      key={i}
+                      className="w-[3px] h-[3px] rounded-full bg-white/60"
+                    />
+                  ))}
+                </div>
+              </div>
+            </motion.aside>
+          )}
+        </AnimatePresence>
+      )}
 
       {/* ══════════════════════════════════════════
           CENTER — Chat
       ══════════════════════════════════════════ */}
-      <main className="flex-1 flex flex-col overflow-hidden relative z-10">
+      <main className="flex-1 flex flex-col overflow-hidden relative z-10 min-w-0">
         {/* Chat header */}
         <motion.div
           initial={{ opacity: 0, y: -8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.35, delay: 0.05 }}
-          className="flex items-center justify-between px-6 py-3.5 border-b border-white/[0.08] flex-shrink-0"
+          className="flex items-center justify-between px-4 md:px-6 py-3.5 border-b border-white/[0.08] flex-shrink-0"
         >
-          <div className="flex items-center gap-3 min-w-0">
+          <div className="flex items-center gap-2 md:gap-3 min-w-0">
+            {/* Toggle sidebar button */}
+            {!sidebarOpen && (
+              <button
+                onClick={() => setSidebarOpen(true)}
+                title="Open sources panel"
+                className="w-7 h-7 flex items-center justify-center rounded border border-white/[0.10] bg-transparent text-white/40 hover:text-white/70 hover:border-white/25 hover:bg-white/[0.05] transition-all duration-150 flex-shrink-0"
+              >
+                {isMobile ? Icon.menu : Icon.panelOpen}
+              </button>
+            )}
+
             {editingTitle ? (
               <input
                 autoFocus
@@ -1315,26 +1403,41 @@ export default function Workspace() {
                 {sessionTitle}
               </p>
             )}
-            <span className="font-mono text-[9px] text-white/25 shrink-0">
+            <span className="font-mono text-[9px] text-white/25 shrink-0 hidden sm:inline">
               · {messages.length} messages
             </span>
-            {/* Org badge */}
-            <span className="font-mono text-[9px] text-white/20 border border-white/[0.08] bg-white/[0.03] rounded px-2 py-0.5 shrink-0 truncate max-w-[120px]">
+            <span className="font-mono text-[9px] text-white/20 border border-white/[0.08] bg-white/[0.03] rounded px-2 py-0.5 shrink-0 truncate max-w-[80px] md:max-w-[120px] hidden sm:inline">
               {org.slug}
             </span>
           </div>
-          <button
-            onClick={() => setMessages([])}
-            className="w-6 h-6 flex items-center justify-center rounded border border-white/[0.08] bg-transparent text-white/35
-              hover:text-white/65 hover:border-white/20 hover:bg-white/[0.05] transition-all duration-150"
-            title="New chat"
-          >
-            {Icon.plus}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={openApiTokenModal}
+              className="h-7 px-3 flex items-center gap-2 rounded border border-white/[0.10]
+      bg-transparent text-white/40 hover:text-white/70
+      hover:border-white/25 hover:bg-white/[0.05]
+      transition-all duration-150"
+              title="API Token"
+            >
+              {Icon.api}
+
+              <span className="font-mono text-[9px] tracking-widest uppercase">
+                API
+              </span>
+            </button>
+
+            <button
+              onClick={() => setMessages([])}
+              className="w-6 h-6 flex items-center justify-center rounded border border-white/[0.08] bg-transparent text-white/35 hover:text-white/65 hover:border-white/20 hover:bg-white/[0.05] transition-all duration-150"
+              title="New chat"
+            >
+              {Icon.plus}
+            </button>
+          </div>
         </motion.div>
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto px-6 py-6 flex flex-col gap-5">
+        <div className="flex-1 overflow-y-auto px-4 md:px-6 py-6 flex flex-col gap-5">
           {messages.length === 0 && !chatLoading && (
             <motion.div
               initial={{ opacity: 0 }}
@@ -1356,28 +1459,21 @@ export default function Workspace() {
               </div>
             </motion.div>
           )}
-
           <AnimatePresence initial={false}>
             {messages.map((msg) =>
               msg.role === "ai" && msg.content === "" ? null : (
-                <MessageBubble
-                  key={msg.id}
-                  msg={msg}
-                  onSave={(title) => saveArtifact("Summary", title)}
-                />
+                <MessageBubble key={msg.id} msg={msg} />
               ),
             )}
           </AnimatePresence>
-
           <AnimatePresence>
             {showTypingIndicator && <TypingIndicator />}
           </AnimatePresence>
-
           <div ref={chatEndRef} />
         </div>
 
         {/* Context bar */}
-        <div className="border-t border-white/[0.08] px-5 py-2 flex items-center gap-2 flex-wrap flex-shrink-0 bg-[#0d0d0d]/60">
+        <div className="border-t border-white/[0.08] px-4 md:px-5 py-2 flex items-center gap-2 flex-wrap flex-shrink-0 bg-[#0d0d0d]/60">
           <span className="font-mono text-[8.5px] uppercase tracking-widest text-white/25">
             Context:
           </span>
@@ -1414,7 +1510,7 @@ export default function Workspace() {
         </div>
 
         {/* Input */}
-        <div className="border-t border-white/[0.08] px-5 py-4 flex-shrink-0">
+        <div className="border-t border-white/[0.08] px-4 md:px-5 py-4 flex-shrink-0">
           <div className="border border-white/[0.10] rounded-lg bg-white/[0.03] focus-within:border-white/[0.22] transition-colors duration-150">
             <textarea
               ref={textareaRef}
@@ -1424,19 +1520,20 @@ export default function Workspace() {
               onKeyDown={handleKeyDown}
               placeholder="Ask anything about your sources…"
               disabled={chatLoading}
-              className="w-full bg-transparent border-none outline-none resize-none font-light text-[13px] text-white/80
-                placeholder-white/25 px-4 pt-3 pb-2 leading-relaxed caret-white/70 disabled:opacity-40"
+              className="w-full bg-transparent border-none outline-none resize-none font-light text-[13px] text-white/80 placeholder-white/25 px-4 pt-3 pb-2 leading-relaxed caret-white/70 disabled:opacity-40"
               style={{ fontFamily: "'IBM Plex Sans', sans-serif" }}
             />
             <div className="flex items-center justify-between px-3 pb-3 pt-1">
-              <span className="font-mono text-[9px] text-white/25">
+              <span className="font-mono text-[9px] text-white/25 hidden sm:inline">
                 ⏎ send · ⇧⏎ newline
+              </span>
+              <span className="font-mono text-[9px] text-white/25 sm:hidden">
+                ⏎ send
               </span>
               <button
                 onClick={sendMessage}
                 disabled={!input.trim() || chatLoading}
-                className="bg-white text-black font-mono text-[10px] tracking-widest uppercase px-4 py-1.5 rounded
-                  hover:bg-white/85 transition-opacity duration-150 disabled:opacity-25 disabled:cursor-not-allowed flex items-center gap-1.5"
+                className="bg-white text-black font-mono text-[10px] tracking-widest uppercase px-4 py-1.5 rounded hover:bg-white/85 transition-opacity duration-150 disabled:opacity-25 disabled:cursor-not-allowed flex items-center gap-1.5"
               >
                 {chatLoading ? (
                   <>
@@ -1452,131 +1549,99 @@ export default function Workspace() {
         </div>
       </main>
 
-      {/* ══════════════════════════════════════════
-          RIGHT SIDEBAR — Tools & Artifacts
-      ══════════════════════════════════════════ */}
-      <aside className="w-[210px] flex-shrink-0 border-l border-white/[0.08] flex flex-col bg-[#0d0d0d] overflow-hidden relative z-10">
-        <motion.div
-          initial={{ opacity: 0, y: -8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.35, delay: 0.1 }}
-          className="px-4 py-3.5 border-b border-white/[0.08] flex-shrink-0"
-        >
-          <p className="font-mono text-[9px] tracking-widest uppercase text-white/35">
-            Tools
-          </p>
-        </motion.div>
+      <AnimatePresence>
+        {showApiModal && (
+          <>
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm"
+              onClick={() => setShowApiModal(false)}
+            />
 
-        {/* Transform tools */}
-        <div className="p-3 flex-shrink-0">
-          <p className="font-mono text-[9px] tracking-widest uppercase text-white/25 mb-2.5 px-1">
-            Transform Output
-          </p>
-          <div className="grid grid-cols-2 gap-1.5">
-            {(
-              [
-                { type: "Summary" as const, icon: Icon.summary },
-                { type: "Flashcards" as const, icon: Icon.flash },
-                { type: "Mind Map" as const, icon: Icon.mindmap },
-                { type: "Report" as const, icon: Icon.report },
-              ] as const
-            ).map(({ type, icon }) => (
-              <button
-                key={type}
-                onClick={() => runTool(type)}
-                disabled={messages.length === 0}
-                className="flex flex-col gap-2 bg-white/[0.03] border border-white/[0.08] rounded-md p-2.5 text-left
-                  hover:bg-white/[0.07] hover:border-white/[0.15] transition-all duration-150 group
-                  disabled:opacity-25 disabled:cursor-not-allowed"
-              >
-                <span className="text-white/40 group-hover:text-white/65 transition-colors">
-                  {icon}
-                </span>
-                <span className="font-mono text-[9px] tracking-widest uppercase text-white/40 group-hover:text-white/65 transition-colors">
-                  {type}
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
+            {/* Modal */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: 10 }}
+              transition={{ duration: 0.18 }}
+              className="fixed left-1/2 top-1/2 z-50
+          w-[92vw] max-w-lg
+          -translate-x-1/2 -translate-y-1/2
+          rounded-xl border border-white/[0.10]
+          bg-[#0d0d0d] shadow-2xl"
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between px-5 py-4 border-b border-white/[0.08]">
+                <div>
+                  <p className="text-[14px] text-white/85 font-light">
+                    API Token
+                  </p>
 
-        <div className="h-px bg-white/[0.08] flex-shrink-0" />
+                  <p className="font-mono text-[9px] text-white/30 mt-1">
+                    Use this token to access your APIs
+                  </p>
+                </div>
 
-        {/* Artifacts list */}
-        <div className="flex-1 overflow-y-auto">
-          <div className="sticky top-0 bg-[#0d0d0d] px-4 pt-3 pb-2 flex items-center justify-between z-10">
-            <p className="font-mono text-[9px] tracking-widest uppercase text-white/25">
-              Artifacts
-            </p>
-            <span className="font-mono text-[9px] text-white/30 bg-white/[0.05] border border-white/[0.08] px-1.5 py-0.5 rounded-full">
-              {artifacts.length}
-            </span>
-          </div>
-
-          {artifacts.length === 0 && (
-            <p className="font-mono text-[9px] text-white/20 italic px-4 py-2">
-              No artifacts yet
-            </p>
-          )}
-
-          <div className="px-3 pb-3 space-y-1.5">
-            <AnimatePresence initial={false}>
-              {artifacts.map((a) => (
-                <motion.div
-                  key={a.id}
-                  initial={{ opacity: 0, y: -8, scale: 0.97 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.95 }}
-                  transition={{ duration: 0.2 }}
-                  className="bg-white/[0.02] border border-white/[0.08] rounded-md p-2.5 hover:bg-white/[0.05] hover:border-white/[0.13] transition-all duration-150 cursor-pointer group relative"
+                <button
+                  onClick={() => setShowApiModal(false)}
+                  className="text-white/35 hover:text-white/70 transition-colors"
                 >
-                  <div className="flex items-center gap-1.5 mb-1">
-                    <span
-                      className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${artifactDots[a.type]}`}
-                    />
-                    <span
-                      className={`font-mono text-[8.5px] tracking-widest uppercase ${artifactColors[a.type].split(" ")[0]}`}
-                    >
-                      {a.type}
-                    </span>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        deleteArtifact(a.id);
-                      }}
-                      className="ml-auto text-white/0 group-hover:text-white/30 hover:!text-white/65 transition-colors duration-150"
-                      title="Delete"
-                    >
-                      {Icon.trash}
-                    </button>
-                  </div>
-                  <p className="text-[11px] text-white/60 leading-snug">
-                    {a.title}
-                  </p>
-                  <p className="font-mono text-[8px] text-white/25 mt-1">
-                    {a.timestamp}
-                  </p>
-                </motion.div>
-              ))}
-            </AnimatePresence>
-          </div>
-        </div>
+                  ✕
+                </button>
+              </div>
 
-        {/* Status bar */}
-        <div className="border-t border-white/[0.08] px-4 py-2.5 flex items-center gap-2 flex-shrink-0">
-          <span
-            className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-            style={{
-              background: chatLoading ? "#fbbf24" : "#34d399",
-              opacity: 0.65,
-              animation: "blinkDot 2.5s ease infinite",
-            }}
-          />
-          <span className="font-mono text-[8.5px] text-white/30 truncate">
-            {chatLoading ? "Processing…" : "claude-sonnet-4 · ready"}
-          </span>
-        </div>
-      </aside>
+              {/* Body */}
+              <div className="p-5 space-y-4">
+                <div
+                  className="rounded-lg border border-white/[0.08]
+            bg-white/[0.03] p-4 overflow-x-auto"
+                >
+                  <code className="font-mono text-[11px] text-white/75 break-all">
+                    {apiToken}
+                  </code>
+                </div>
+
+                <div
+                  className="rounded-md border border-amber-400/15
+            bg-amber-400/[0.05] px-3 py-2"
+                >
+                  <p className="font-mono text-[9px] text-amber-200/60 leading-relaxed">
+                    Keep this token secure. Anyone with this token can access
+                    your authenticated APIs.
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-end gap-2">
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(apiToken || "");
+
+                      setApiCopied(true);
+
+                      setTimeout(() => {
+                        setApiCopied(false);
+                      }, 1500);
+                    }}
+                    className="px-4 py-2 rounded-md border
+                border-white/[0.10]
+                bg-white/[0.04]
+                text-white/60 hover:text-white/85
+                hover:border-white/20
+                transition-all duration-150
+                font-mono text-[10px]
+                tracking-widest uppercase"
+                  >
+                    {apiCopied ? "Copied" : "Copy Token"}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
 
       <style>{`
         @keyframes pulseThink { 0%, 100% { opacity: 0.25; } 50% { opacity: 0.7; } }

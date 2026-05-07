@@ -15,7 +15,7 @@ const pc = new Pinecone({ apiKey: process.env.PINECONE_API_KEY! });
 const index = pc.index({ name: process.env.PINECONE_INDEX_NAME! });
 
 const ddb = DynamoDBDocumentClient.from(
-  new DynamoDBClient({ region: process.env.AWS_REGION ?? "us-east-1" })
+  new DynamoDBClient({ region: process.env.AWS_REGION ?? "us-east-1" }),
 );
 const TABLE = process.env.TABLE_NAME!;
 
@@ -23,7 +23,7 @@ const TABLE = process.env.TABLE_NAME!;
 
 async function resolveOrgMember(
   request: Request,
-  orgId: string
+  orgId: string,
 ): Promise<{ error: string; status: number } | null> {
   // 1. Extract Bearer token
   const authHeader = request.headers.get("authorization") ?? "";
@@ -40,7 +40,8 @@ async function resolveOrgMember(
     userId = user.userId;
   } catch (err) {
     const name = (err as Error).name;
-    if (name === "TokenExpiredError") return { error: "Token expired", status: 401 };
+    if (name === "TokenExpiredError")
+      return { error: "Token expired", status: 401 };
     return { error: "Invalid token", status: 401 };
   }
 
@@ -49,7 +50,7 @@ async function resolveOrgMember(
     new GetCommand({
       TableName: TABLE,
       Key: { pk: `USER#${userId}`, sk: `MEMBER#${orgId}` },
-    })
+    }),
   );
 
   if (!memberRecord.Item) {
@@ -76,7 +77,9 @@ function createServer(orgId: string) {
         doc_ids: z
           .array(z.string())
           .optional()
-          .describe("Optional list of document IDs to restrict search to specific documents within the org"),
+          .describe(
+            "Optional list of document IDs to restrict search to specific documents within the org",
+          ),
         topK: z
           .number()
           .int()
@@ -106,7 +109,14 @@ function createServer(orgId: string) {
           inputs: { text: query },
           filter,
         },
-        fields: ["text", "source_file", "doc_id", "chunk_index", "total_chunks", "org_id"],
+        fields: [
+          "text",
+          "source_file",
+          "doc_id",
+          "chunk_index",
+          "total_chunks",
+          "org_id",
+        ],
       });
 
       const hits = response.result?.hits ?? [];
@@ -140,7 +150,7 @@ function createServer(orgId: string) {
         .join("\n\n---\n\n");
 
       return { content: [{ type: "text", text: formatted }] };
-    }
+    },
   );
 
   return server;
@@ -152,34 +162,95 @@ export default {
   async fetch(request: Request): Promise<Response> {
     if (request.method !== "POST") {
       return Response.json(
-        { error: "Method not allowed. Only POST is supported in stateless mode." },
-        { status: 405, headers: { Allow: "POST" } }
+        {
+          error:
+            "Method not allowed. Only POST is supported in stateless mode.",
+        },
+        { status: 405, headers: { Allow: "POST" } },
       );
     }
 
-    // Extract org_id from query param: POST /mcp?org_id=xxx
+    // ── Resolve slug from URL ────────────────────────────────────────────────
+    // Example:
+    // /api/orgs/checkstyle/mcp
+    //                  ↑
+    //                slug
+
     const url = new URL(request.url);
-    const orgId = url.searchParams.get("org_id")?.trim();
+    const pathParts = url.pathname.split("/").filter(Boolean);
 
-    if (!orgId) {
+    // Assuming route structure contains [slug]
+    const slug = pathParts[pathParts.indexOf("orgs") + 1]?.trim();
+
+    if (!slug) {
       return Response.json(
-        { jsonrpc: "2.0", error: { code: -32600, message: "org_id query param is required" }, id: null },
-        { status: 400 }
+        {
+          jsonrpc: "2.0",
+          error: { code: -32600, message: "Org slug is required" },
+          id: null,
+        },
+        { status: 400 },
       );
     }
 
-    // ── Auth + membership check before touching MCP ───────────────────────────
+    // ── Resolve slug → orgId ────────────────────────────────────────────────
+    let orgId: string;
+
+    try {
+      const slugRecord = await ddb.send(
+        new GetCommand({
+          TableName: TABLE,
+          Key: {
+            pk: `SLUG#${slug}`,
+            sk: "ORG",
+          },
+        }),
+      );
+
+      if (!slugRecord.Item) {
+        return Response.json(
+          {
+            jsonrpc: "2.0",
+            error: { code: -32600, message: "Org not found" },
+            id: null,
+          },
+          { status: 404 },
+        );
+      }
+
+      orgId = slugRecord.Item.orgId as string;
+    } catch (err) {
+      console.error("[MCP] Failed to resolve slug:", err);
+
+      return Response.json(
+        {
+          jsonrpc: "2.0",
+          error: { code: -32603, message: "Failed to resolve org" },
+          id: null,
+        },
+        { status: 500 },
+      );
+    }
+
+    // ── Auth + membership check ─────────────────────────────────────────────
     const authError = await resolveOrgMember(request, orgId);
+
     if (authError) {
       return Response.json(
-        { jsonrpc: "2.0", error: { code: -32600, message: authError.error }, id: null },
-        { status: authError.status }
+        {
+          jsonrpc: "2.0",
+          error: { code: -32600, message: authError.error },
+          id: null,
+        },
+        { status: authError.status },
       );
     }
 
-    // ── MCP handling ──────────────────────────────────────────────────────────
+    // ── MCP handling ────────────────────────────────────────────────────────
     const { req, res } = toReqRes(request);
-    const server = createServer(orgId); // orgId locked in for this request
+
+    const server = createServer(orgId);
+
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
       enableJsonResponse: true,
@@ -198,11 +269,19 @@ export default {
     } catch (err: any) {
       transport.close().catch(() => {});
       server.close().catch(() => {});
+
       console.error("[MCP] Unhandled error:", err);
 
       return Response.json(
-        { jsonrpc: "2.0", error: { code: -32603, message: "Internal server error" }, id: null },
-        { status: 500 }
+        {
+          jsonrpc: "2.0",
+          error: {
+            code: -32603,
+            message: "Internal server error",
+          },
+          id: null,
+        },
+        { status: 500 },
       );
     }
   },

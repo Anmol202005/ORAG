@@ -1,6 +1,12 @@
 // api/orgs/[slug]/agent.ts
+
 import { ChatOpenAI } from "@langchain/openai";
-import { HumanMessage, AIMessage, BaseMessage } from "@langchain/core/messages";
+import {
+  HumanMessage,
+  AIMessage,
+  BaseMessage,
+  SystemMessage,
+} from "@langchain/core/messages";
 import { MultiServerMCPClient } from "@langchain/mcp-adapters";
 import { createAgent } from "langchain";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
@@ -13,8 +19,11 @@ dotenv.config({ path: "./.env" });
 export const dynamic = "force-dynamic";
 
 const ddb = DynamoDBDocumentClient.from(
-  new DynamoDBClient({ region: process.env.AWS_REGION ?? "us-east-1" }),
+  new DynamoDBClient({
+    region: process.env.AWS_REGION ?? "us-east-1",
+  }),
 );
+
 const TABLE = process.env.TABLE_NAME!;
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -26,7 +35,6 @@ interface ChatMessage {
 
 interface AgentRequestBody {
   messages: ChatMessage[];
-  org_id: string; // required — scopes the agent to the user's org
   doc_ids?: string[];
   systemPrompt?: string;
 }
@@ -37,56 +45,66 @@ async function authenticate(
   request: Request,
   orgId: string,
 ): Promise<{ error: string; status: number } | null> {
-  // 1. Extract Bearer token
   const authHeader = request.headers.get("authorization") ?? "";
-  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
+
+  const token = authHeader.startsWith("Bearer ")
+    ? authHeader.slice(7)
+    : null;
 
   if (!token) {
     return { error: "Authentication required", status: 401 };
   }
 
-  // 2. Verify JWT — reuse verifyToken from middleware
   let userId: string;
+
   try {
     const user = verifyToken(token);
     userId = user.userId;
   } catch (err) {
     const name = (err as Error).name;
-    if (name === "TokenExpiredError")
+
+    if (name === "TokenExpiredError") {
       return { error: "Token expired", status: 401 };
+    }
+
     return { error: "Invalid token", status: 401 };
   }
 
-  // 3. Check org membership in DynamoDB
   const memberRecord = await ddb.send(
     new GetCommand({
       TableName: TABLE,
-      Key: { pk: `USER#${userId}`, sk: `MEMBER#${orgId}` },
+      Key: {
+        pk: `USER#${userId}`,
+        sk: `MEMBER#${orgId}`,
+      },
     }),
   );
 
   if (!memberRecord.Item) {
-    // 404 instead of 403 — don't leak org existence
     return { error: "Org not found", status: 404 };
   }
 
-  return null; // all good
+  return null;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function getMcpUrl(request: Request, orgId: string): string {
+function getMcpUrl(request: Request): string {
   if (process.env.MCP_SERVER_URL) {
-    return `${process.env.MCP_SERVER_URL}?org_id=${encodeURIComponent(orgId)}`;
+    return process.env.MCP_SERVER_URL;
   }
+
   const url = new URL(request.url);
-  const slug = url.pathname.split("/")[3]; // /api/orgs/[slug]/agent → slug
-  const base = `${url.protocol}//${url.host}/api/orgs/${slug}/mcp`;
-  return `${base}?org_id=${encodeURIComponent(orgId)}`;
+
+  const slug = url.pathname.split("/")[3];
+
+  return `${url.protocol}//${url.host}/api/orgs/${slug}/mcp`;
 }
 
 function sse(payload: Record<string, unknown>): Uint8Array {
-  return new TextEncoder().encode(`data: ${JSON.stringify(payload)}\n\n`);
+  return new TextEncoder().encode(
+    `data: ${JSON.stringify(payload)}\n\n`,
+  );
 }
 
 function parseMessages(
@@ -98,10 +116,13 @@ function parseMessages(
   input: string;
 } {
   const systemMsgs = messages.filter((m) => m.role === "system");
+
   const nonSystem = messages.filter((m) => m.role !== "system");
 
   const docScopeNote = doc_ids?.length
-    ? `\nThe user has scoped this search to the following document IDs: [${doc_ids.join(", ")}].\nAlways pass these doc_ids when calling searchDocument.`
+    ? `\nThe user has scoped this search to the following document IDs: [${doc_ids.join(
+        ", ",
+      )}].\nAlways pass these doc_ids when calling searchDocument.`
     : "";
 
   const systemContent =
@@ -112,7 +133,10 @@ If no relevant results are found, say so clearly.
 Today is ${new Date().toISOString().slice(0, 10)}.${docScopeNote}`;
 
   const last = nonSystem.at(-1);
-  const input = last?.role === "user" ? last.content : "";
+
+  const input = last?.role === "user"
+    ? last.content
+    : "";
 
   const chatHistory: BaseMessage[] = nonSystem
     .slice(0, -1)
@@ -122,7 +146,11 @@ Today is ${new Date().toISOString().slice(0, 10)}.${docScopeNote}`;
         : new AIMessage(m.content),
     );
 
-  return { systemContent, chatHistory, input };
+  return {
+    systemContent,
+    chatHistory,
+    input,
+  };
 }
 
 // ── Handler ───────────────────────────────────────────────────────────────────
@@ -130,23 +158,28 @@ Today is ${new Date().toISOString().slice(0, 10)}.${docScopeNote}`;
 export default {
   async fetch(request: Request): Promise<Response> {
     if (request.method !== "POST") {
-      return Response.json({ error: "Method not allowed" }, { status: 405 });
+      return Response.json(
+        { error: "Method not allowed" },
+        { status: 405 },
+      );
     }
 
     let body: AgentRequestBody;
+
     try {
       body = await request.json();
     } catch {
-      return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+      return Response.json(
+        { error: "Invalid JSON body" },
+        { status: 400 },
+      );
     }
 
-    const { messages, org_id, doc_ids, systemPrompt: systemOverride } = body;
-    console.log("[agent] request body:", {
+    const {
       messages,
-      org_id,
       doc_ids,
-      systemOverride,
-    });
+      systemPrompt: systemOverride,
+    } = body;
 
     if (!messages?.length) {
       return Response.json(
@@ -155,14 +188,55 @@ export default {
       );
     }
 
-    if (!org_id?.trim()) {
-      return Response.json({ error: "'org_id' is required" }, { status: 400 });
+    // ── Resolve slug → orgId ─────────────────────────────────────────────────
+
+    const url = new URL(request.url);
+
+    const pathParts = url.pathname.split("/").filter(Boolean);
+
+    const slug = pathParts[pathParts.indexOf("orgs") + 1]?.trim();
+
+    if (!slug) {
+      return Response.json(
+        { error: "Org slug missing" },
+        { status: 400 },
+      );
     }
 
-    const orgId = org_id.trim();
+    let orgId: string;
 
-    // ── Auth + membership check before streaming ──────────────────────────────
+    try {
+      const slugRecord = await ddb.send(
+        new GetCommand({
+          TableName: TABLE,
+          Key: {
+            pk: `SLUG#${slug}`,
+            sk: "ORG",
+          },
+        }),
+      );
+
+      if (!slugRecord.Item) {
+        return Response.json(
+          { error: "Org not found" },
+          { status: 404 },
+        );
+      }
+
+      orgId = slugRecord.Item.orgId as string;
+    } catch (err) {
+      console.error("[agent] slug lookup failed:", err);
+
+      return Response.json(
+        { error: "Failed to resolve org" },
+        { status: 500 },
+      );
+    }
+
+    // ── Auth + membership check ──────────────────────────────────────────────
+
     const authError = await authenticate(request, orgId);
+
     if (authError) {
       return Response.json(
         { error: authError.error },
@@ -170,8 +244,9 @@ export default {
       );
     }
 
-    // ── Verified — start streaming ────────────────────────────────────────────
-    const mcpUrl = getMcpUrl(request, orgId);
+    // ── Verified — start streaming ───────────────────────────────────────────
+
+    const mcpUrl = getMcpUrl(request);
 
     const stream = new ReadableStream({
       async start(controller) {
@@ -181,15 +256,13 @@ export default {
         let mcpClient: MultiServerMCPClient | null = null;
 
         try {
-          // 1. Connect to MCP — org_id is baked into the URL so the MCP server
-          //    scopes all Pinecone searches to this org automatically
           mcpClient = new MultiServerMCPClient({
             "pinecone-rag": {
               transport: "http",
               url: mcpUrl,
-              // Forward the Authorization header so MCP server can re-verify
               headers: {
-                Authorization: request.headers.get("authorization") ?? "",
+                Authorization:
+                  request.headers.get("authorization") ?? "",
               },
             },
           });
@@ -197,38 +270,46 @@ export default {
           const tools = await mcpClient.getTools();
 
           const allMessages: ChatMessage[] = systemOverride
-            ? [{ role: "system", content: systemOverride }, ...messages]
+            ? [
+                {
+                  role: "system",
+                  content: systemOverride,
+                },
+                ...messages,
+              ]
             : messages;
 
-          const { systemContent, chatHistory, input } = parseMessages(
-            allMessages,
-            doc_ids,
-          );
-          console.log("[agent] parsed messages:", {
+          const {
             systemContent,
             chatHistory,
             input,
-          });
+          } = parseMessages(allMessages, doc_ids);
 
           if (!input) {
             send({
               type: "error",
               message: "Last message must be from the user.",
             });
+
             controller.close();
             return;
           }
 
           const model = new ChatOpenAI({
             model: process.env.AI_MODEL,
-            configuration: { baseURL: process.env.AI_ENDPOINT },
+            configuration: {
+              baseURL: process.env.AI_ENDPOINT,
+            },
             apiKey: process.env.AI_API_KEY,
           });
 
-          const agent = createAgent({ model, tools });
+          const agent = createAgent({
+            model,
+            tools,
+          });
 
           const agentMessages: BaseMessage[] = [
-            new AIMessage({ content: systemContent, role: "system" } as any),
+            new SystemMessage(systemContent),
             ...chatHistory,
             new HumanMessage(input),
           ];
@@ -245,14 +326,20 @@ export default {
               chunk.tool_calls.length > 0
             ) {
               for (const tc of chunk.tool_calls) {
-                send({ type: "tool_start", name: tc.name, input: tc.args });
+                send({
+                  type: "tool_start",
+                  name: tc.name,
+                  input: tc.args,
+                });
               }
             }
 
             if (chunk.getType?.() === "tool") {
               send({
                 type: "tool_end",
-                name: (chunk as any).name ?? metadata?.langgraph_node,
+                name:
+                  (chunk as any).name ??
+                  metadata?.langgraph_node,
                 output: chunk.content,
               });
             }
@@ -261,21 +348,32 @@ export default {
               chunk.getType?.() === "ai" &&
               typeof chunk.content === "string" &&
               chunk.content.length > 0 &&
-              !("tool_calls" in chunk && (chunk as any).tool_calls?.length)
+              !(
+                "tool_calls" in chunk &&
+                (chunk as any).tool_calls?.length
+              )
             ) {
-              send({ type: "token", content: chunk.content });
+              send({
+                type: "token",
+                content: chunk.content,
+              });
             }
           }
 
           send({ type: "done" });
         } catch (err: any) {
           console.error("[agent] error:", err);
+
           send({
             type: "error",
-            message: err?.message ?? "Internal server error",
+            message:
+              err?.message ?? "Internal server error",
           });
         } finally {
-          if (mcpClient) await mcpClient.close().catch(() => {});
+          if (mcpClient) {
+            await mcpClient.close().catch(() => {});
+          }
+
           controller.close();
         }
       },
@@ -283,7 +381,8 @@ export default {
 
     return new Response(stream, {
       headers: {
-        "Content-Type": "text/event-stream; charset=utf-8",
+        "Content-Type":
+          "text/event-stream; charset=utf-8",
         "Cache-Control": "no-cache, no-transform",
         Connection: "keep-alive",
         "X-Accel-Buffering": "no",

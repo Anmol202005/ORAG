@@ -100,6 +100,78 @@ const stats = [
   { value: "SOC 2", label: "Type II certified" },
 ];
 
+// ── Terminal code lines ────────────────────────────────────────────────────────
+// Rendered as proper syntax-highlighted spans, no JSX string interpolation issues
+function TerminalSnippet() {
+  return (
+    <pre className="px-5 py-5 text-[12px] font-mono leading-6 overflow-x-auto">
+      <span className="text-white/25">
+        {"// ~/.claude/claude_code_config.json"}
+      </span>
+
+      {"\n"}
+
+      <span className="text-white/50">{"{"}</span>
+
+      {"\n"}
+      {"  "}
+      <span className="text-white/55">{"\"mcpServers\""}</span>
+      <span className="text-white/30">{": {"}</span>
+
+      {"\n"}
+      {"    "}
+      <span className="text-white/55">{"\"orag\""}</span>
+      <span className="text-white/30">{": {"}</span>
+
+      {"\n"}
+      {"      "}
+      <span className="text-white/55">{"\"type\""}</span>
+      <span className="text-white/30">{": "}</span>
+      <span className="text-white/65">{'"http"'}</span>
+      <span className="text-white/30">{","}</span>
+
+      {"\n"}
+      {"      "}
+      <span className="text-white/55">{"\"url\""}</span>
+      <span className="text-white/30">{": "}</span>
+      <span className="text-white/65">
+        {
+          '"https://your-orag-instance.com/api/orgs/acme-corp/mcp"'
+        }
+      </span>
+      <span className="text-white/30">{","}</span>
+
+      {"\n"}
+      {"      "}
+      <span className="text-white/55">{"\"headers\""}</span>
+      <span className="text-white/30">{": {"}</span>
+
+      {"\n"}
+      {"        "}
+      <span className="text-white/55">{"\"Authorization\""}</span>
+      <span className="text-white/30">{": "}</span>
+      <span className="text-white/65">
+        {'"Bearer orag_live_xxxxxxxxxxxxxxxxxxxx"'}
+      </span>
+
+      {"\n"}
+      {"      "}
+      <span className="text-white/30">{"}"}</span>
+
+      {"\n"}
+      {"    "}
+      <span className="text-white/30">{"}"}</span>
+
+      {"\n"}
+      {"  "}
+      <span className="text-white/30">{"}"}</span>
+
+      {"\n"}
+      <span className="text-white/50">{"}"}</span>
+    </pre>
+  );
+}
+
 // ── component ─────────────────────────────────────────────────────────────────
 export default function Landing() {
   const navigate = useNavigate();
@@ -162,7 +234,7 @@ export default function Landing() {
           {["Features", "How it works", "Docs"].map((label) => (
             <a
               key={label}
-              href="#"
+              href={label === "Docs" ? "/docs" : "#"}
               className="font-mono text-[10px] tracking-widest uppercase text-white/35
                          hover:text-white/70 transition-colors duration-150"
             >
@@ -239,7 +311,7 @@ export default function Landing() {
             Get started free →
           </button>
           <a
-            href="#"
+            href="/docs"
             className="font-mono text-[11px] tracking-widest uppercase text-white/35
                        border border-white/[0.08] px-7 py-3 rounded
                        hover:text-white/55 hover:border-white/15 transition-all duration-150"
@@ -366,7 +438,7 @@ export default function Landing() {
               auth, and observability out of the box.
             </p>
             <a
-              href="#"
+              href="/docs"
               className="font-mono text-[10px] tracking-widest uppercase text-white/40
                          border border-white/[0.10] px-4 py-2.5 rounded inline-block
                          hover:text-white/70 hover:border-white/20 transition-all duration-150"
@@ -375,7 +447,7 @@ export default function Landing() {
             </a>
           </Reveal>
 
-          {/* Fake terminal */}
+          {/* Terminal */}
           <Reveal delay={0.1}>
             <div className="border border-white/[0.08] rounded-lg overflow-hidden bg-white/[0.02]">
               {/* Terminal bar */}
@@ -383,40 +455,11 @@ export default function Landing() {
                 <span className="w-2.5 h-2.5 rounded-full bg-white/10" />
                 <span className="w-2.5 h-2.5 rounded-full bg-white/10" />
                 <span className="w-2.5 h-2.5 rounded-full bg-white/10" />
-                <span className="font-mono text-[10px] text-white/20 ml-2 tracking-wider">orag.config.ts</span>
+                <span className="font-mono text-[10px] text-white/20 ml-2 tracking-wider">
+                  orag.config.ts
+                </span>
               </div>
-              <pre className="px-5 py-5 text-[12px] font-mono leading-6 overflow-x-auto">
-                <span className="text-white/25">// orag.config.ts</span>{"\n"}
-                <span className="text-white/70">export default </span>
-                <span className="text-white/50">{"{"}</span>{"\n"}
-                {"  "}<span className="text-white/50">sources</span>
-                <span className="text-white/30">: [</span>{"\n"}
-                {"    "}<span className="text-white/30">{"{"} </span>
-                <span className="text-white/50">type</span>
-                <span className="text-white/30">: </span>
-                <span className="text-white/60">"notion"</span>
-                <span className="text-white/30">, </span>
-                <span className="text-white/50">workspace</span>
-                <span className="text-white/30">: </span>
-                <span className="text-white/60">env.NOTION_ID </span>
-                <span className="text-white/30">{"}"}</span>{"\n"}
-                {"  "}<span className="text-white/30">],</span>{"\n"}
-                {"  "}<span className="text-white/50">mcp</span>
-                <span className="text-white/30">: {"{"}</span>{"\n"}
-                {"    "}<span className="text-white/50">enabled</span>
-                <span className="text-white/30">: </span>
-                <span className="text-white/60">true</span>
-                <span className="text-white/30">,</span>{"\n"}
-                {"    "}<span className="text-white/50">auth</span>
-                <span className="text-white/30">: </span>
-                <span className="text-white/60">"google-sso"</span>
-                <span className="text-white/30">,</span>{"\n"}
-                {"    "}<span className="text-white/50">port</span>
-                <span className="text-white/30">: </span>
-                <span className="text-white/60">3100</span>{"\n"}
-                {"  "}<span className="text-white/30">{"}"}</span>{"\n"}
-                <span className="text-white/50">{"}"}</span>
-              </pre>
+              <TerminalSnippet />
             </div>
           </Reveal>
         </div>
@@ -476,7 +519,7 @@ export default function Landing() {
             {["Privacy", "Terms", "Docs", "Status", "GitHub"].map((l) => (
               <a
                 key={l}
-                href="#"
+                href={l === "Docs" ? "/docs" : "#"}
                 className="font-mono text-[10px] tracking-widest uppercase text-white/25
                            hover:text-white/50 transition-colors duration-150"
               >

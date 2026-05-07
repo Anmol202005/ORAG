@@ -5,6 +5,7 @@ import Auth from "./pages/Auth";
 import Landing from "./pages/Landing";
 import Organizations from "./pages/Organizations";
 import ProtectedRoute from "./components/ProtectedRoute";
+import DocsPage from "./pages/Doc";
 
 export default function App() {
   return (
@@ -14,6 +15,7 @@ export default function App() {
           <Routes>
             <Route path="/" element={<Landing />} />
             <Route path="/auth" element={<Auth />} />
+            <Route path="/docs" element={<DocsPage />} />
             <Route
               path="/organizations"
               element={

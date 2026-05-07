@@ -3,6 +3,15 @@ import { motion } from "framer-motion";
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
+function isTokenValid(token: string): boolean {
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1]));
+    return payload.exp * 1000 > Date.now();
+  } catch {
+    return false;
+  }
+}
+
 export default function Auth() {
   const [mounted, setMounted] = useState(false);
   const [hovering, setHovering] = useState(false);
@@ -11,6 +20,13 @@ export default function Auth() {
   const gisReady = useRef(false);
 
   useEffect(() => {
+
+    const token = localStorage.getItem("auth_token");
+    if (token && isTokenValid(token)) {
+      window.location.href = "/organizations";
+      return;
+    }
+    localStorage.removeItem("auth_token");
     setMounted(true);
 
     const scriptId = "google-gis-script";
