@@ -3,6 +3,7 @@ import type { VercelResponse } from "@vercel/node";
 import { Pinecone } from "@pinecone-database/pinecone";
 import { PutCommand } from "@aws-sdk/lib-dynamodb";
 import { docClient } from "../../../lib/dynamo.js";
+import { CanvasFactory } from "pdf-parse/worker";
 import { PDFParse } from "pdf-parse";
 import { randomUUID } from "crypto";
 import formidable from "formidable"; // ← add
@@ -41,7 +42,7 @@ async function extractText(file: File): Promise<string> {
   }
 
   if (mime === "application/pdf" || name.endsWith(".pdf")) {
-    const parser = new PDFParse({ data: buffer });
+    const parser = new PDFParse({ data: buffer, CanvasFactory });
     try {
       const data = await parser.getText();
       return data.text;
