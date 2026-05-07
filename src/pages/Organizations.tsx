@@ -38,7 +38,9 @@ function OrgInitial({ name }: { name: string }) {
       className="w-9 h-9 rounded-md border border-white/[0.10] bg-white/[0.05]
                  flex items-center justify-center shrink-0"
     >
-      <span className="font-mono text-[11px] tracking-widest text-white/50">{initials}</span>
+      <span className="font-mono text-[11px] tracking-widest text-white/50">
+        {initials}
+      </span>
     </div>
   );
 }
@@ -83,8 +85,10 @@ function UserAvatar({ user }: { user: Me }) {
   }
 
   return (
-    <div className="w-8 h-8 rounded-full border border-white/[0.10] bg-white/[0.06]
-                    flex items-center justify-center">
+    <div
+      className="w-8 h-8 rounded-full border border-white/[0.10] bg-white/[0.06]
+                    flex items-center justify-center"
+    >
       <span className="font-mono text-[11px] text-white/50">{initials}</span>
     </div>
   );
@@ -97,13 +101,21 @@ interface CreateOrgModalProps {
 }
 
 function CreateOrgModal({ onClose, onCreated }: CreateOrgModalProps) {
-  const [form, setForm] = useState({ name: "", slug: "", description: "", isPublic: false });
+  const [form, setForm] = useState({
+    name: "",
+    slug: "",
+    description: "",
+    isPublic: false,
+  });
   const [slugEdited, setSlugEdited] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const toSlug = (v: string) =>
-    v.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    v
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "");
 
   const handleName = (v: string) => {
     setForm((f) => ({
@@ -185,7 +197,9 @@ function CreateOrgModal({ onClose, onCreated }: CreateOrgModalProps) {
             <p className="font-mono text-[10px] tracking-widest uppercase text-white/30 mb-1.5">
               New organization
             </p>
-            <h2 className="text-2xl font-light tracking-tight">Create workspace</h2>
+            <h2 className="text-2xl font-light tracking-tight">
+              Create workspace
+            </h2>
           </div>
           <button
             onClick={onClose}
@@ -221,8 +235,10 @@ function CreateOrgModal({ onClose, onCreated }: CreateOrgModalProps) {
             <label className="font-mono text-[10px] tracking-widest uppercase text-white/30 block mb-2">
               URL slug
             </label>
-            <div className="flex items-center border border-white/[0.08] rounded-md overflow-hidden
-                            focus-within:border-white/20 transition-colors duration-150">
+            <div
+              className="flex items-center border border-white/[0.08] rounded-md overflow-hidden
+                            focus-within:border-white/20 transition-colors duration-150"
+            >
               <span className="font-mono text-[11px] text-white/20 px-3 py-2.5 bg-white/[0.02] border-r border-white/[0.07] shrink-0">
                 orag.app/
               </span>
@@ -245,14 +261,18 @@ function CreateOrgModal({ onClose, onCreated }: CreateOrgModalProps) {
           <div>
             <label className="font-mono text-[10px] tracking-widest uppercase text-white/30 block mb-2">
               Description{" "}
-              <span className="text-white/15 normal-case tracking-normal">(optional)</span>
+              <span className="text-white/15 normal-case tracking-normal">
+                (optional)
+              </span>
             </label>
             <textarea
               rows={3}
               placeholder="What does this organization do?"
               value={form.description}
               disabled={loading}
-              onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, description: e.target.value }))
+              }
               className="w-full bg-white/[0.04] border border-white/[0.08] rounded-md px-4 py-2.5
                          text-sm font-light text-white placeholder-white/20 outline-none resize-none
                          focus:border-white/20 transition-colors duration-150
@@ -270,7 +290,9 @@ function CreateOrgModal({ onClose, onCreated }: CreateOrgModalProps) {
               </p>
             </div>
             <div
-              onClick={() => !loading && setForm((f) => ({ ...f, isPublic: !f.isPublic }))}
+              onClick={() =>
+                !loading && setForm((f) => ({ ...f, isPublic: !f.isPublic }))
+              }
               className={`relative rounded-full border transition-all duration-200 cursor-pointer
                           ${form.isPublic ? "bg-white/20 border-white/30" : "bg-white/[0.04] border-white/[0.10]"}
                           ${loading ? "opacity-50 cursor-not-allowed" : ""}`}
@@ -294,7 +316,9 @@ function CreateOrgModal({ onClose, onCreated }: CreateOrgModalProps) {
               transition={{ duration: 0.2 }}
               className="mt-5 border border-red-500/20 bg-red-500/[0.06] rounded-md px-4 py-3"
             >
-              <p className="font-mono text-[11px] text-red-400/80 tracking-wider">{error}</p>
+              <p className="font-mono text-[11px] text-red-400/80 tracking-wider">
+                {error}
+              </p>
             </motion.div>
           )}
         </AnimatePresence>
@@ -393,7 +417,9 @@ export default function Organizations() {
         const data: Me = await res.json();
         setUser(data);
       } catch (err) {
-        setUserError(err instanceof Error ? err.message : "Failed to load user");
+        setUserError(
+          err instanceof Error ? err.message : "Failed to load user",
+        );
       } finally {
         setUserLoading(false);
       }
@@ -424,7 +450,9 @@ export default function Organizations() {
         const data = await res.json();
         setMyOrgs(data.orgs);
       } catch (err) {
-        setOrgsError(err instanceof Error ? err.message : "Failed to load organizations");
+        setOrgsError(
+          err instanceof Error ? err.message : "Failed to load organizations",
+        );
       } finally {
         setOrgsLoading(false);
       }
@@ -450,7 +478,9 @@ export default function Organizations() {
         setPublicOrgs(data.orgs);
       } catch (err) {
         setPublicOrgsError(
-          err instanceof Error ? err.message : "Failed to load public organizations"
+          err instanceof Error
+            ? err.message
+            : "Failed to load public organizations",
         );
       } finally {
         setPublicOrgsLoading(false);
@@ -470,7 +500,7 @@ export default function Organizations() {
     (o) =>
       o.name.toLowerCase().includes(search.toLowerCase()) ||
       o.description?.toLowerCase().includes(search.toLowerCase()) ||
-      o.tags?.some((t) => t.toLowerCase().includes(search.toLowerCase()))
+      o.tags?.some((t) => t.toLowerCase().includes(search.toLowerCase())),
   );
 
   // ── Join organization ──
@@ -509,8 +539,8 @@ export default function Organizations() {
       // Optimistically increment member count in the list
       setPublicOrgs((prev) =>
         prev.map((o) =>
-          o.id === id ? { ...o, memberCount: o.memberCount + 1 } : o
-        )
+          o.id === id ? { ...o, memberCount: o.memberCount + 1 } : o,
+        ),
       );
     } catch (err) {
       setJoinErrors((prev) => ({
@@ -524,7 +554,6 @@ export default function Organizations() {
 
   return (
     <div className="relative min-h-screen text-white">
-
       {/* Background grid */}
       <div
         className="pointer-events-none fixed inset-0 z-0"
@@ -538,17 +567,60 @@ export default function Organizations() {
       />
 
       {/* ── Nav ── */}
-      <nav className="fixed top-0 left-0 right-0 z-40 flex items-center justify-between
+      <nav
+        className="fixed top-0 left-0 right-0 z-40 flex items-center justify-between
                       px-8 md:px-20 lg:px-32 py-5 border-b border-white/[0.07]
-                      bg-[#0a0a0a]/80 backdrop-blur-md">
+                      bg-[#0a0a0a]/80 backdrop-blur-md"
+      >
         <div className="flex items-center gap-2.5">
-          <svg width="18" height="18" viewBox="0 0 22 22" fill="none" className="opacity-60">
-            <rect x="1" y="1" width="9" height="9" rx="1.5" stroke="white" strokeWidth="1.2" />
-            <rect x="12" y="1" width="9" height="9" rx="1.5" stroke="white" strokeWidth="1.2" />
-            <rect x="1" y="12" width="9" height="9" rx="1.5" stroke="white" strokeWidth="1.2" />
-            <rect x="12" y="12" width="9" height="9" rx="1.5" stroke="white" strokeWidth="1.2" strokeDasharray="2 2" />
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 22 22"
+            fill="none"
+            className="opacity-60"
+          >
+            <rect
+              x="1"
+              y="1"
+              width="9"
+              height="9"
+              rx="1.5"
+              stroke="white"
+              strokeWidth="1.2"
+            />
+            <rect
+              x="12"
+              y="1"
+              width="9"
+              height="9"
+              rx="1.5"
+              stroke="white"
+              strokeWidth="1.2"
+            />
+            <rect
+              x="1"
+              y="12"
+              width="9"
+              height="9"
+              rx="1.5"
+              stroke="white"
+              strokeWidth="1.2"
+            />
+            <rect
+              x="12"
+              y="12"
+              width="9"
+              height="9"
+              rx="1.5"
+              stroke="white"
+              strokeWidth="1.2"
+              strokeDasharray="2 2"
+            />
           </svg>
-          <span className="text-lg font-light tracking-[0.2em] text-white">ORAG</span>
+          <span className="text-lg font-light tracking-[0.2em] text-white">
+            ORAG
+          </span>
         </div>
 
         <div className="flex items-center gap-3">
@@ -559,22 +631,31 @@ export default function Organizations() {
               className="w-32 h-4 rounded bg-white/[0.07]"
             />
           ) : userError ? (
-            <span className="font-mono text-[10px] text-red-400/60 tracking-wider">{userError}</span>
+            <span className="font-mono text-[10px] text-red-400/60 tracking-wider">
+              {userError}
+            </span>
           ) : user ? (
             <>
               <div className="hidden sm:flex flex-col items-end">
-                <span className="text-sm font-light text-white/70">{user.name}</span>
-                <span className="font-mono text-[10px] text-white/25 tracking-wider">{user.email}</span>
+                <span className="text-sm font-light text-white/70">
+                  {user.name}
+                </span>
+                <span className="font-mono text-[10px] text-white/25 tracking-wider">
+                  {user.email}
+                </span>
               </div>
               <UserAvatar user={user} />
             </>
           ) : null}
 
           <button
-            onClick={() => navigate("/")}
+            onClick={() => {
+              localStorage.removeItem("auth_token");
+              navigate("/");
+            }}
             className="font-mono text-[10px] tracking-widest uppercase text-white/25
-                       border border-white/[0.07] px-3 py-1.5 rounded
-                       hover:text-white/50 hover:border-white/15 transition-all duration-150"
+             border border-white/[0.07] px-3 py-1.5 rounded
+             hover:text-white/50 hover:border-white/15 transition-all duration-150"
           >
             Sign out
           </button>
@@ -583,7 +664,6 @@ export default function Organizations() {
 
       {/* ── Page body ── */}
       <main className="relative z-10 px-8 md:px-20 lg:px-32 pt-28 pb-24">
-
         {/* ── Page header ── */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -595,7 +675,9 @@ export default function Organizations() {
             <p className="font-mono text-[10px] tracking-widest uppercase text-white/30 mb-3">
               Workspaces
             </p>
-            <h1 className="text-4xl md:text-5xl font-light tracking-tight">Organizations</h1>
+            <h1 className="text-4xl md:text-5xl font-light tracking-tight">
+              Organizations
+            </h1>
           </div>
 
           <button
@@ -622,8 +704,10 @@ export default function Organizations() {
             <p className="font-mono text-[10px] tracking-widest uppercase text-white/30">
               My organizations
               {!orgsLoading && (
-                <span className="ml-2 font-mono text-[9px] text-white/20 bg-white/[0.05]
-                                 border border-white/[0.07] px-1.5 py-0.5 rounded-full">
+                <span
+                  className="ml-2 font-mono text-[9px] text-white/20 bg-white/[0.05]
+                                 border border-white/[0.07] px-1.5 py-0.5 rounded-full"
+                >
                   {myOrgs.length}
                 </span>
               )}
@@ -637,18 +721,30 @@ export default function Organizations() {
                   <div className="flex items-start gap-3 mb-5">
                     <motion.div
                       animate={{ opacity: [0.3, 0.6, 0.3] }}
-                      transition={{ repeat: Infinity, duration: 1.2, delay: i * 0.15 }}
+                      transition={{
+                        repeat: Infinity,
+                        duration: 1.2,
+                        delay: i * 0.15,
+                      }}
                       className="w-9 h-9 rounded-md bg-white/[0.07]"
                     />
                     <div className="flex-1 space-y-2">
                       <motion.div
                         animate={{ opacity: [0.3, 0.6, 0.3] }}
-                        transition={{ repeat: Infinity, duration: 1.2, delay: i * 0.15 }}
+                        transition={{
+                          repeat: Infinity,
+                          duration: 1.2,
+                          delay: i * 0.15,
+                        }}
                         className="h-3.5 w-32 rounded bg-white/[0.07]"
                       />
                       <motion.div
                         animate={{ opacity: [0.3, 0.6, 0.3] }}
-                        transition={{ repeat: Infinity, duration: 1.2, delay: i * 0.15 + 0.1 }}
+                        transition={{
+                          repeat: Infinity,
+                          duration: 1.2,
+                          delay: i * 0.15 + 0.1,
+                        }}
                         className="h-3 w-14 rounded-full bg-white/[0.05]"
                       />
                     </div>
@@ -658,7 +754,11 @@ export default function Organizations() {
                       <motion.div
                         key={j}
                         animate={{ opacity: [0.3, 0.6, 0.3] }}
-                        transition={{ repeat: Infinity, duration: 1.2, delay: i * 0.15 + j * 0.05 }}
+                        transition={{
+                          repeat: Infinity,
+                          duration: 1.2,
+                          delay: i * 0.15 + j * 0.05,
+                        }}
                         className="h-8 w-10 rounded bg-white/[0.05]"
                       />
                     ))}
@@ -668,7 +768,9 @@ export default function Organizations() {
             </div>
           ) : orgsError ? (
             <div className="border border-white/[0.07] rounded-lg px-6 py-10 text-center">
-              <p className="font-mono text-[11px] text-red-400/60 tracking-widest">{orgsError}</p>
+              <p className="font-mono text-[11px] text-red-400/60 tracking-widest">
+                {orgsError}
+              </p>
             </div>
           ) : myOrgs.length === 0 ? (
             <p className="font-mono text-[11px] text-white/20 py-10 text-center tracking-widest">
@@ -688,33 +790,49 @@ export default function Organizations() {
                     className="group relative bg-white/[0.015] hover:bg-white/[0.04]
                                transition-colors duration-200 p-6 cursor-pointer"
                   >
-                    <span className="absolute top-5 right-5 font-mono text-[11px] text-white/0
-                                     group-hover:text-white/30 transition-colors duration-200">
+                    <span
+                      className="absolute top-5 right-5 font-mono text-[11px] text-white/0
+                                     group-hover:text-white/30 transition-colors duration-200"
+                    >
                       →
                     </span>
 
                     <div className="flex items-start gap-3 mb-5">
                       <OrgInitial name={org.name} />
                       <div className="min-w-0 flex-1">
-                        <p className="text-[15px] font-light truncate mb-1">{org.name}</p>
+                        <p className="text-[15px] font-light truncate mb-1">
+                          {org.name}
+                        </p>
                         <RolePill role={org.role!} />
                       </div>
                     </div>
 
                     <div className="flex items-center gap-5 pt-4 border-t border-white/[0.06]">
                       <div>
-                        <p className="text-base font-light">{org.sources ?? 0}</p>
-                        <p className="font-mono text-[9px] tracking-widest uppercase text-white/25">Sources</p>
+                        <p className="text-base font-light">
+                          {org.sources ?? 0}
+                        </p>
+                        <p className="font-mono text-[9px] tracking-widest uppercase text-white/25">
+                          Sources
+                        </p>
                       </div>
                       <div className="w-px h-6 bg-white/[0.06]" />
                       <div>
-                        <p className="text-base font-light">{org.mcpServers ?? 0}</p>
-                        <p className="font-mono text-[9px] tracking-widest uppercase text-white/25">MCP Servers</p>
+                        <p className="text-base font-light">
+                          {org.mcpServers ?? 0}
+                        </p>
+                        <p className="font-mono text-[9px] tracking-widest uppercase text-white/25">
+                          MCP Servers
+                        </p>
                       </div>
                       <div className="w-px h-6 bg-white/[0.06]" />
                       <div>
-                        <p className="text-base font-light">{org.memberCount}</p>
-                        <p className="font-mono text-[9px] tracking-widest uppercase text-white/25">Members</p>
+                        <p className="text-base font-light">
+                          {org.memberCount}
+                        </p>
+                        <p className="font-mono text-[9px] tracking-widest uppercase text-white/25">
+                          Members
+                        </p>
                       </div>
                     </div>
                   </motion.div>
@@ -725,20 +843,27 @@ export default function Organizations() {
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.35, delay: 0.1 + myOrgs.length * 0.04 }}
+                transition={{
+                  duration: 0.35,
+                  delay: 0.1 + myOrgs.length * 0.04,
+                }}
                 onClick={() => setShowCreate(true)}
                 className="group bg-white/[0.01] hover:bg-white/[0.03] transition-colors duration-200
                            p-6 cursor-pointer flex flex-col items-center justify-center gap-3
                            border-dashed border border-white/[0.07] rounded-sm min-h-[140px]"
               >
-                <span className="w-9 h-9 rounded-md border border-white/[0.10] bg-white/[0.04]
+                <span
+                  className="w-9 h-9 rounded-md border border-white/[0.10] bg-white/[0.04]
                                  flex items-center justify-center text-white/30 text-xl font-light
                                  group-hover:border-white/20 group-hover:text-white/50
-                                 transition-all duration-200">
+                                 transition-all duration-200"
+                >
                   +
                 </span>
-                <p className="font-mono text-[10px] tracking-widest uppercase text-white/25
-                               group-hover:text-white/45 transition-colors duration-200">
+                <p
+                  className="font-mono text-[10px] tracking-widest uppercase text-white/25
+                               group-hover:text-white/45 transition-colors duration-200"
+                >
                   Create organization
                 </p>
               </motion.div>
@@ -758,8 +883,10 @@ export default function Organizations() {
             <p className="font-mono text-[10px] tracking-widest uppercase text-white/30">
               Discover public organizations
               {!publicOrgsLoading && (
-                <span className="ml-2 font-mono text-[9px] text-white/20 bg-white/[0.05]
-                                 border border-white/[0.07] px-1.5 py-0.5 rounded-full">
+                <span
+                  className="ml-2 font-mono text-[9px] text-white/20 bg-white/[0.05]
+                                 border border-white/[0.07] px-1.5 py-0.5 rounded-full"
+                >
                   {filteredPublic.length}
                 </span>
               )}
@@ -768,10 +895,27 @@ export default function Organizations() {
             <div className="relative">
               <svg
                 className="absolute left-3 top-1/2 -translate-y-1/2 opacity-25"
-                width="13" height="13" viewBox="0 0 14 14" fill="none"
+                width="13"
+                height="13"
+                viewBox="0 0 14 14"
+                fill="none"
               >
-                <circle cx="6" cy="6" r="4.5" stroke="white" strokeWidth="1.2" />
-                <line x1="9.5" y1="9.5" x2="13" y2="13" stroke="white" strokeWidth="1.2" strokeLinecap="round" />
+                <circle
+                  cx="6"
+                  cy="6"
+                  r="4.5"
+                  stroke="white"
+                  strokeWidth="1.2"
+                />
+                <line
+                  x1="9.5"
+                  y1="9.5"
+                  x2="13"
+                  y2="13"
+                  stroke="white"
+                  strokeWidth="1.2"
+                  strokeLinecap="round"
+                />
               </svg>
               <input
                 type="text"
@@ -789,32 +933,55 @@ export default function Organizations() {
             {publicOrgsLoading ? (
               <div className="divide-y divide-white/[0.06]">
                 {[0, 1, 2].map((i) => (
-                  <div key={i} className="flex items-center gap-5 px-6 py-5 bg-white/[0.01]">
+                  <div
+                    key={i}
+                    className="flex items-center gap-5 px-6 py-5 bg-white/[0.01]"
+                  >
                     <motion.div
                       animate={{ opacity: [0.3, 0.6, 0.3] }}
-                      transition={{ repeat: Infinity, duration: 1.2, delay: i * 0.15 }}
+                      transition={{
+                        repeat: Infinity,
+                        duration: 1.2,
+                        delay: i * 0.15,
+                      }}
                       className="w-9 h-9 rounded-md bg-white/[0.07] shrink-0"
                     />
                     <div className="flex-1 space-y-2">
                       <motion.div
                         animate={{ opacity: [0.3, 0.6, 0.3] }}
-                        transition={{ repeat: Infinity, duration: 1.2, delay: i * 0.15 }}
+                        transition={{
+                          repeat: Infinity,
+                          duration: 1.2,
+                          delay: i * 0.15,
+                        }}
                         className="h-3.5 w-40 rounded bg-white/[0.07]"
                       />
                       <motion.div
                         animate={{ opacity: [0.3, 0.6, 0.3] }}
-                        transition={{ repeat: Infinity, duration: 1.2, delay: i * 0.15 + 0.1 }}
+                        transition={{
+                          repeat: Infinity,
+                          duration: 1.2,
+                          delay: i * 0.15 + 0.1,
+                        }}
                         className="h-3 w-72 rounded bg-white/[0.05]"
                       />
                       <motion.div
                         animate={{ opacity: [0.3, 0.6, 0.3] }}
-                        transition={{ repeat: Infinity, duration: 1.2, delay: i * 0.15 + 0.15 }}
+                        transition={{
+                          repeat: Infinity,
+                          duration: 1.2,
+                          delay: i * 0.15 + 0.15,
+                        }}
                         className="h-2.5 w-20 rounded bg-white/[0.04]"
                       />
                     </div>
                     <motion.div
                       animate={{ opacity: [0.3, 0.6, 0.3] }}
-                      transition={{ repeat: Infinity, duration: 1.2, delay: i * 0.15 }}
+                      transition={{
+                        repeat: Infinity,
+                        duration: 1.2,
+                        delay: i * 0.15,
+                      }}
                       className="h-7 w-16 rounded bg-white/[0.05] shrink-0"
                     />
                   </div>
@@ -822,13 +989,17 @@ export default function Organizations() {
               </div>
             ) : publicOrgsError ? (
               <div className="px-6 py-10 text-center">
-                <p className="font-mono text-[11px] text-red-400/60 tracking-widest">{publicOrgsError}</p>
+                <p className="font-mono text-[11px] text-red-400/60 tracking-widest">
+                  {publicOrgsError}
+                </p>
               </div>
             ) : (
               <AnimatePresence>
                 {filteredPublic.length === 0 ? (
                   <p className="font-mono text-[11px] text-white/20 py-12 text-center tracking-widest">
-                    {search ? "No organizations match your search" : "No public organizations yet"}
+                    {search
+                      ? "No organizations match your search"
+                      : "No public organizations yet"}
                   </p>
                 ) : (
                   filteredPublic.map((org, i) => {
@@ -850,7 +1021,9 @@ export default function Organizations() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2.5 mb-1 flex-wrap">
                             <p className="text-[15px] font-light">{org.name}</p>
-                            {org.tags?.map((t) => <Tag key={t} label={t} />)}
+                            {org.tags?.map((t) => (
+                              <Tag key={t} label={t} />
+                            ))}
                           </div>
                           <p className="text-xs font-light text-white/35 leading-relaxed mb-1.5 max-w-xl">
                             {org.description}
@@ -881,7 +1054,10 @@ export default function Organizations() {
                               {isJoining ? (
                                 <motion.span
                                   animate={{ opacity: [1, 0.3, 1] }}
-                                  transition={{ repeat: Infinity, duration: 0.9 }}
+                                  transition={{
+                                    repeat: Infinity,
+                                    duration: 0.9,
+                                  }}
                                 >
                                   …
                                 </motion.span>

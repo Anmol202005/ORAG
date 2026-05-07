@@ -263,5 +263,5 @@ const handler = async (req: AuthenticatedRequest, res: VercelResponse) => {
 export default compose(
   withCors,
   withAuth,
-  withOrgMember(["owner", "admin"]),
+  withOrgMember(["owner", "admin", "member"]),
 )(handler);
