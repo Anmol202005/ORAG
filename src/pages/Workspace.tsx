@@ -54,7 +54,7 @@ function getAuthHeaders(): HeadersInit {
 
 async function apiFetchOrg(
   slug: string,
-  navigate: (path: string) => void
+  navigate: (path: string) => void,
 ): Promise<OrgState> {
   const res = await fetch(`/api/orgs/${slug}`, {
     method: "GET",
@@ -77,7 +77,7 @@ async function apiFetchOrg(
 
 async function apiFetchFiles(
   slug: string,
-  navigate: (path: string) => void
+  navigate: (path: string) => void,
 ): Promise<FileNode[]> {
   const res = await fetch(`/api/orgs/${slug}/getFilesByOrgId`, {
     method: "GET",
@@ -123,7 +123,7 @@ async function apiFetchFiles(
 async function apiUploadFile(
   file: File,
   slug: string,
-  navigate: (path: string) => void
+  navigate: (path: string) => void,
 ): Promise<FileNode> {
   const authHeaders = getAuthHeaders() as Record<string, string>;
 
@@ -171,7 +171,7 @@ function buildSystemMessage(fileNames: string[], webSearch: boolean): string {
   const parts: string[] = [];
   if (fileNames.length)
     parts.push(
-      `The user has the following files in context: ${fileNames.join(", ")}.`
+      `The user has the following files in context: ${fileNames.join(", ")}.`,
     );
   if (webSearch)
     parts.push("You may search the web to supplement your answer.");
@@ -184,7 +184,7 @@ async function apiChatStream(
   slug: string,
   orgId: string,
   docIds: string[],
-  navigate: (path: string) => void
+  navigate: (path: string) => void,
 ): Promise<string> {
   const res = await fetch(`/api/orgs/${slug}/agent`, {
     method: "POST",
@@ -201,7 +201,7 @@ async function apiChatStream(
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     throw new Error(
-      `/api/orgs/${slug}/agent ${res.status}${text ? `: ${text}` : ""}`
+      `/api/orgs/${slug}/agent ${res.status}${text ? `: ${text}` : ""}`,
     );
   }
   const reader = res.body?.getReader();
@@ -251,15 +251,15 @@ function renderContent(text: string) {
   return text
     .replace(
       /\*\*(.*?)\*\*/g,
-      '<strong class="text-white/90 font-normal">$1</strong>'
+      '<strong class="text-white/90 font-normal">$1</strong>',
     )
     .replace(
       /`(.*?)`/g,
-      '<code class="font-mono text-[10.5px] bg-white/[0.10] border border-white/[0.14] rounded px-1.5 py-0.5 text-white/75">$1</code>'
+      '<code class="font-mono text-[10.5px] bg-white/[0.10] border border-white/[0.14] rounded px-1.5 py-0.5 text-white/75">$1</code>',
     )
     .replace(
       /^• (.+)$/gm,
-      '<div class="flex gap-2 my-1"><span class="text-white/35 mt-0.5 flex-shrink-0">·</span><span>$1</span></div>'
+      '<div class="flex gap-2 my-1"><span class="text-white/35 mt-0.5 flex-shrink-0">·</span><span>$1</span></div>',
     )
     .split("\n\n")
     .map((p) => `<p class="mb-2 last:mb-0">${p}</p>`)
@@ -829,7 +829,7 @@ function useResizableSidebar(defaultWidth: number) {
       if (!isResizing.current || !sidebarRef.current) return;
       const newW = Math.min(
         SIDEBAR_MAX,
-        Math.max(SIDEBAR_MIN, startW.current + clientX - startX.current)
+        Math.max(SIDEBAR_MIN, startW.current + clientX - startX.current),
       );
       sidebarRef.current.style.width = `${newW}px`;
     };
@@ -866,7 +866,7 @@ function useResizableSidebar(defaultWidth: number) {
 interface SidebarContentProps {
   org: OrgState;
   navigate: (path: string) => void;
-  fileInputRef: React.RefObject<HTMLInputElement>;
+  fileInputRef: React.RefObject<HTMLInputElement | null>;
   uploadLoading: boolean;
   setSidebarOpen: (v: boolean) => void;
   isMobile: boolean;
@@ -884,7 +884,6 @@ interface SidebarContentProps {
 }
 
 const SidebarContent = React.memo(function SidebarContent({
-  org,
   navigate,
   fileInputRef,
   uploadLoading,
@@ -1134,7 +1133,7 @@ export default function Workspace() {
         })
         .finally(() => setFilesLoading(false));
     },
-    [navigate]
+    [navigate],
   );
 
   useEffect(() => {
@@ -1152,7 +1151,7 @@ export default function Workspace() {
         n,
         ...(n.children ? flattenNodes(n.children) : []),
       ]),
-    []
+    [],
   );
 
   const openApiTokenModal = () => {
@@ -1177,7 +1176,7 @@ export default function Workspace() {
           ? { ...n, checked: !n.checked }
           : n.children
             ? { ...n, children: toggle(n.children) }
-            : n
+            : n,
       );
     setSources((prev) => toggle(prev));
   }, []);
@@ -1189,7 +1188,7 @@ export default function Workspace() {
           ? { ...n, open: !n.open }
           : n.children
             ? { ...n, children: toggle(n.children) }
-            : n
+            : n,
       );
     setSources((prev) => toggle(prev));
   }, []);
@@ -1212,7 +1211,7 @@ export default function Workspace() {
   };
 
   const activeContextFiles = flattenNodes(sources).filter(
-    (n) => n.type === "file" && n.checked
+    (n) => n.type === "file" && n.checked,
   );
   const activeContextNames = activeContextFiles.map((n) => n.name);
   const activeContextIds = activeContextFiles.map((n) => n.id);
@@ -1226,16 +1225,16 @@ export default function Workspace() {
               ...n,
               open: true,
               children: n.children?.filter((c) =>
-                c.name.toLowerCase().includes(searchQ.toLowerCase())
+                c.name.toLowerCase().includes(searchQ.toLowerCase()),
               ),
             }))
             .filter(
               (n) =>
                 n.name.toLowerCase().includes(searchQ.toLowerCase()) ||
-                (n.children && n.children.length > 0)
+                (n.children && n.children.length > 0),
             )
         : sources,
-    [sources, searchQ]
+    [sources, searchQ],
   );
 
   const sendMessage = async () => {
@@ -1261,7 +1260,7 @@ export default function Workspace() {
           agentMessages.push({
             role: m.role === "ai" ? "assistant" : "user",
             content: m.content,
-          })
+          }),
         );
         return prev;
       });
@@ -1281,14 +1280,14 @@ export default function Workspace() {
         (token) => {
           setMessages((prev) =>
             prev.map((m) =>
-              m.id === aiId ? { ...m, content: m.content + token } : m
-            )
+              m.id === aiId ? { ...m, content: m.content + token } : m,
+            ),
           );
         },
         org.slug,
         org.orgId,
         activeContextIds,
-        navigate
+        navigate,
       );
 
       setChatLoading(false);
@@ -1557,7 +1556,7 @@ export default function Workspace() {
             {messages.map((msg) =>
               msg.role === "ai" && msg.content === "" ? null : (
                 <MessageBubble key={msg.id} msg={msg} />
-              )
+              ),
             )}
           </AnimatePresence>
           <AnimatePresence>
