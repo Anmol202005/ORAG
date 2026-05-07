@@ -1,0 +1,21 @@
+{
+  "framework": "vite",
+  "fluid": true,
+  "rewrites": [
+    {
+      "source": "/((?!api\\/.*).*)",
+      "destination": "/index.html"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "s-maxage=60, stale-while-revalidate=300"
+        }
+      ]
+    }
+  ]
+}
