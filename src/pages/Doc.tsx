@@ -624,7 +624,7 @@ export default function DocsPage() {
   "mcpServers": {
     "orag": {
       "type": "http",
-      "url": "https://your-orag-instance.com/api/orgs/acme-corp/mcp",
+      "url": "https://orag.theanmolsharma.com/api/orgs/acme-corp/mcp",
       "headers": {
         "Authorization": "Bearer orag_live_xxxxxxxxxxxxxxxxxxxx"
       }
@@ -643,7 +643,7 @@ export default function DocsPage() {
   "mcpServers": {
     "orag": {
       "type": "http",
-      "url": "https://your-orag-instance.com/api/orgs/acme-corp/mcp",
+      "url": "https://orag.theanmolsharma.com/api/orgs/acme-corp/mcp",
       "headers": {
         "Authorization": "Bearer \${process.env.ORAG_API_KEY}"
       }
@@ -704,7 +704,7 @@ claude mcp list
                 {`{
   "mcpServers": {
     "orag": {
-      "url": "https://your-orag-instance.com/api/orgs/acme-corp/mcp",
+      "url": "https://orag.theanmolsharma.com/api/orgs/acme-corp/mcp",
       "headers": {
         "Authorization": "Bearer orag_live_xxxxxxxxxxxxxxxxxxxx"
       }
@@ -747,7 +747,7 @@ claude mcp list
                 {`{
   "mcpServers": {
     "orag": {
-      "serverUrl": "https://your-orag-instance.com/api/orgs/acme-corp/mcp",
+      "serverUrl": "https://orag.theanmolsharma.com/api/orgs/acme-corp/mcp",
       "headers": {
         "Authorization": "Bearer orag_live_xxxxxxxxxxxxxxxxxxxx"
       }
@@ -782,7 +782,7 @@ import { createReactAgent } from "@langchain/langgraph/prebuilt";
 const mcpClient = new MultiServerMCPClient({
   orag: {
     transport: "http",
-    url: "https://your-orag-instance.com/api/orgs/acme-corp/mcp",
+    url: "https://orag.theanmolsharma.com/api/orgs/acme-corp/mcp",
     headers: {
       Authorization: \`Bearer \${process.env.ORAG_API_KEY}\`,
     },
@@ -842,7 +842,7 @@ asyncio.run(main())`}
 curl -N \\
   -H "Authorization: Bearer orag_live_xxxxxxxxxxxxxxxxxxxx" \\
   -H "Accept: text/event-stream" \\
-  "https://your-orag-instance.com/api/orgs/acme-corp/mcp"
+  "https://orag.theanmolsharma.com/api/orgs/acme-corp/mcp"
 
 # Call searchDocument via JSON-RPC over SSE
 # In practice, use a proper MCP client library for production use.`}

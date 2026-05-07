@@ -240,7 +240,7 @@ function TerminalSnippet() {
       <span className="text-white/55">{'"url"'}</span>
       <span className="text-white/30">{": "}</span>
       <span className="text-white/65">
-        {'"https://your-orag-instance.com/api/orgs/acme-corp/mcp"'}
+        {'"https://orag.theanmolsharma.com/api/orgs/acme-corp/mcp"'}
       </span>
       <span className="text-white/30">{","}</span>
 
