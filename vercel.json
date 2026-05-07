@@ -1,5 +1,6 @@
 {
   "framework": "vite",
+  "fluid": true,
   "rewrites": [
     {
       "source": "/((?!api\\/.*).*)",

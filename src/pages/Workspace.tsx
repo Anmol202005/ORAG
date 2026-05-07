@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useNavigate, useParams } from "react-router-dom";
+import { upload } from "@vercel/blob/client";
 
 // ── Types ──────────────────────────────────────────────────────
 interface FileNode {
@@ -113,25 +114,36 @@ async function apiFetchFiles(slug: string): Promise<FileNode[]> {
 }
 
 async function apiUploadFile(file: File, slug: string): Promise<FileNode> {
-  const form = new FormData();
-  form.append("file", file);
+  const authHeaders = getAuthHeaders() as Record<string, string>;
 
-  // Don't set Content-Type manually — browser sets multipart boundary automatically
-  const headers = getAuthHeaders() as Record<string, string>;
-  delete headers["Content-Type"];
+  // Phase 1: Upload directly to Vercel Blob (bypasses Vercel's 4.5MB limit)
+  const blob = await upload(file.name, file, {
+    access: "private",
+    clientPayload: file.name,
+    handleUploadUrl: `/api/orgs/${slug}/uploadFile`,
+    // upload() will internally call your endpoint with the auth headers
+    // for the token exchange — pass them here
+    headers: authHeaders,
+  });
 
+  // Phase 2: Trigger processing (extract → chunk → Pinecone → DynamoDB)
   const res = await fetch(`/api/orgs/${slug}/uploadFile`, {
     method: "POST",
-    headers,
+    headers: {
+      ...authHeaders,
+      "Content-Type": "application/json",
+    },
     credentials: "include",
-    body: form,
+    body: JSON.stringify({ blobUrl: blob.url, fileName: file.name }),
   });
+
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     throw new Error(`Upload failed ${res.status}${text ? `: ${text}` : ""}`);
   }
+
   const data = await res.json();
-  // Map the response shape to FileNode
+
   return {
     id: data.docId,
     type: "file",
