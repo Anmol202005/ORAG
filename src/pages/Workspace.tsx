@@ -1216,7 +1216,6 @@ export default function Workspace() {
     );
 
     // Then refresh in the background to sync server state
-    fetchFiles(org.slug);
   } catch (err: unknown) {
     if (err instanceof Error && err.message !== "Unauthorized") {
       alert(`Upload failed: ${err.message}`);
