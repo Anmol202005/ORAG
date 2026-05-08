@@ -20,6 +20,9 @@ import {
 // ── Config ────────────────────────────────────────────────────────────────────
 export const config = {
   maxDuration: 300,
+  api: {
+    bodyParser: false, // required — lets handleUpload read the raw body itself
+  },
 };
 
 dotenv.config({ path: "./.env" });
@@ -30,17 +33,9 @@ const TABLE = process.env.TABLE_NAME!;
 
 const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100 MB
 
-const ALLOWED_CONTENT_TYPES = [
-  "application/pdf",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  "text/plain",
-  "text/markdown",
-  "text/csv",
-  "application/json",
-  "application/javascript",
-  "text/javascript",
-  "application/typescript",
-  "text/x-python",
+const ALLOWED_EXTENSIONS = [
+  "pdf", "docx", "txt", "md", "csv",
+  "json", "ts", "tsx", "js", "jsx", "py",
 ];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -53,19 +48,12 @@ function batchArray<T>(arr: T[], size: number): T[][] {
   return batches;
 }
 
-async function extractText(buffer: Buffer, mime: string, name: string): Promise<string> {
+// Trust filename extension over MIME type — mobile browsers frequently
+// send application/octet-stream regardless of the actual file type
+async function extractText(buffer: Buffer, _mime: string, name: string): Promise<string> {
   const lowerName = name.toLowerCase();
 
-  if (
-    mime.startsWith("text/") ||
-    [".md", ".json", ".csv", ".ts", ".tsx", ".js", ".jsx", ".py", ".txt"].some(
-      (ext) => lowerName.endsWith(ext),
-    )
-  ) {
-    return buffer.toString("utf-8");
-  }
-
-  if (mime === "application/pdf" || lowerName.endsWith(".pdf")) {
+  if (lowerName.endsWith(".pdf")) {
     const parser = new PDFParse({ data: buffer, CanvasFactory });
     try {
       const data = await parser.getText();
@@ -75,15 +63,13 @@ async function extractText(buffer: Buffer, mime: string, name: string): Promise<
     }
   }
 
-  if (
-    mime === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
-    lowerName.endsWith(".docx")
-  ) {
+  if (lowerName.endsWith(".docx")) {
     const mammoth = await import("mammoth");
     const result = await mammoth.extractRawText({ buffer });
     return result.value;
   }
 
+  // .txt, .md, .csv, .json, .ts, .tsx, .js, .jsx, .py — all plain text
   return buffer.toString("utf-8");
 }
 
@@ -130,12 +116,24 @@ const handler = async (req: AuthenticatedRequest, res: VercelResponse) => {
   }
 
   const { orgId } = req.orgMember!;
-  const body = req.body as HandleUploadBody;
+
+  // Manually read + parse body since bodyParser is disabled
+  let body: HandleUploadBody & { blobUrl?: string; fileName?: string };
+  try {
+    const raw = await new Promise<Buffer>((resolve, reject) => {
+      const chunks: Buffer[] = [];
+      req.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+      req.on("end", () => resolve(Buffer.concat(chunks)));
+      req.on("error", reject);
+    });
+    body = JSON.parse(raw.toString("utf-8"));
+  } catch {
+    return res.status(400).json({ error: "Invalid or missing JSON body" });
+  }
 
   // ── Phase 1: Token generation ──────────────────────────────────────────────
   // Client sends { type: "blob.generate-client-token", ... }
-  // We validate and return a short-lived upload token.
-  // Client then uploads directly to Vercel Blob using that token.
+  // We validate by extension only — MIME types are unreliable on mobile.
   if (body?.type === "blob.generate-client-token") {
     try {
       const jsonResponse = await handleUpload({
@@ -144,17 +142,15 @@ const handler = async (req: AuthenticatedRequest, res: VercelResponse) => {
         onBeforeGenerateToken: async (pathname, clientPayload) => {
           const fileName = clientPayload ?? pathname;
           const ext = fileName.split(".").pop()?.toLowerCase() ?? "";
-          const allowedExts = [
-            "pdf", "docx", "txt", "md", "csv",
-            "json", "ts", "tsx", "js", "jsx", "py",
-          ];
 
-          if (!allowedExts.includes(ext)) {
+          if (!ALLOWED_EXTENSIONS.includes(ext)) {
             throw new Error(`File type .${ext} is not supported`);
           }
 
           return {
-            allowedContentTypes: ALLOWED_CONTENT_TYPES,
+            // No allowedContentTypes — mobile sends wrong MIME types
+            // (e.g. application/octet-stream for .csv, .docx, .ts etc.)
+            // Extension check above is the only gate we need.
             maximumSizeInBytes: MAX_FILE_SIZE,
             tokenPayload: JSON.stringify({ orgId }),
             addRandomSuffix: true,
@@ -170,19 +166,22 @@ const handler = async (req: AuthenticatedRequest, res: VercelResponse) => {
 
   // ── Phase 2: Process the uploaded blob ────────────────────────────────────
   // Client sends { blobUrl, fileName } after uploading to Vercel Blob.
-  // We fetch via get() (required for private stores), process, then delete the blob.
-  const { blobUrl, fileName } = body as any;
+  const { blobUrl, fileName } = body;
 
   if (!blobUrl || !fileName) {
     return res.status(400).json({ error: "Missing blobUrl or fileName" });
+  }
+
+  // Validate extension again server-side — never trust the client alone
+  const ext = fileName.split(".").pop()?.toLowerCase() ?? "";
+  if (!ALLOWED_EXTENSIONS.includes(ext)) {
+    return res.status(400).json({ error: `File type .${ext} is not supported` });
   }
 
   let blobBuffer: Buffer;
   let contentType: string;
 
   try {
-    // get() is the only way to read private blobs server-side —
-    // plain fetch() or head()+fetch(downloadUrl) both 403 on private stores
     const result = await get(blobUrl, {
       access: "private",
       token: process.env.BLOB_READ_WRITE_TOKEN!,
@@ -209,7 +208,7 @@ const handler = async (req: AuthenticatedRequest, res: VercelResponse) => {
     return res.status(502).json({ error: `Could not retrieve uploaded file: ${err.message}` });
   }
 
-  // Extract text
+  // Extract text — pass contentType for reference but extraction is driven by fileName
   let rawText: string;
   try {
     rawText = await extractText(blobBuffer, contentType, fileName);
