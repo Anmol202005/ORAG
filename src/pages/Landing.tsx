@@ -409,19 +409,6 @@ export default function Landing() {
         className="relative z-10 min-h-screen flex flex-col items-center justify-center
                            px-6 text-center pt-24 pb-32"
       >
-        {/* Badge */}
-        <motion.div
-          initial={{ opacity: 0, y: 14 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.45, delay: 0.1 }}
-          className="inline-flex items-center gap-2 border border-white/[0.10] bg-white/[0.04]
-                     rounded-full px-4 py-1.5 mb-10"
-        >
-          <span className="w-1.5 h-1.5 rounded-full bg-white/40" />
-          <span className="font-mono text-[10px] tracking-widest uppercase text-white/40">
-            Now in early access
-          </span>
-        </motion.div>
 
         {/* Headline */}
         <motion.h1
