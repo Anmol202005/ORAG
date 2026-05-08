@@ -1194,21 +1194,38 @@ export default function Workspace() {
   }, []);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !org) return;
-    setUploadLoading(true);
-    try {
-      await apiUploadFile(file, org.slug, navigate);
-      await fetchFiles(org.slug);
-    } catch (err: unknown) {
-      if (err instanceof Error && err.message !== "Unauthorized") {
-        alert(`Upload failed: ${err.message}`);
-      }
-    } finally {
-      setUploadLoading(false);
-      e.target.value = "";
+  const file = e.target.files?.[0];
+  if (!file || !org) return;
+  setUploadLoading(true);
+  try {
+    const newNode = await apiUploadFile(file, org.slug, navigate);
+
+    // Optimistically add the file to the sidebar immediately
+    setSources((prev) =>
+      prev.map((node) =>
+        node.id === "__org_docs__"
+          ? {
+              ...node,
+              children: [
+                ...(node.children ?? []),
+                { ...newNode, checked: false },
+              ],
+            }
+          : node,
+      ),
+    );
+
+    // Then refresh in the background to sync server state
+    fetchFiles(org.slug);
+  } catch (err: unknown) {
+    if (err instanceof Error && err.message !== "Unauthorized") {
+      alert(`Upload failed: ${err.message}`);
     }
-  };
+  } finally {
+    setUploadLoading(false);
+    e.target.value = "";
+  }
+};
 
   const activeContextFiles = flattenNodes(sources).filter(
     (n) => n.type === "file" && n.checked,
