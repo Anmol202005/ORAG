@@ -1126,7 +1126,7 @@ export default function Workspace() {
     (orgSlug: string) => {
       setFilesLoading(true);
       setFilesError(null);
-      apiFetchFiles(orgSlug, navigate)
+      return apiFetchFiles(orgSlug, navigate)
         .then((tree) => setSources(tree))
         .catch((e) => {
           if (e.message !== "Unauthorized") setFilesError(e.message);
@@ -1199,7 +1199,7 @@ export default function Workspace() {
     setUploadLoading(true);
     try {
       await apiUploadFile(file, org.slug, navigate);
-      fetchFiles(org.slug);
+      await fetchFiles(org.slug);
     } catch (err: unknown) {
       if (err instanceof Error && err.message !== "Unauthorized") {
         alert(`Upload failed: ${err.message}`);
