@@ -256,6 +256,12 @@ export default {
         let mcpClient: MultiServerMCPClient | null = null;
 
         try {
+          const apiKey = process.env.ZAI_API_KEY;
+
+          if (!apiKey) {
+            throw new Error("ZAI_API_KEY is not configured.");
+          }
+
           mcpClient = new MultiServerMCPClient({
             "pinecone-rag": {
               transport: "http",
@@ -296,11 +302,14 @@ export default {
           }
 
           const model = new ChatOpenAI({
-            model: process.env.AI_MODEL,
+            model: process.env.ZAI_MODEL || "glm-4.5-flash",
             configuration: {
-              baseURL: process.env.AI_ENDPOINT,
+              baseURL: "https://api.z.ai/api/paas/v4/",
             },
-            apiKey: process.env.AI_API_KEY,
+            apiKey,
+            // Z.ai uses the OpenAI-compatible Chat Completions API.
+            useResponsesApi: false,
+            modelKwargs: { thinking: { type: "disabled" } },
           });
 
           const agent = createAgent({

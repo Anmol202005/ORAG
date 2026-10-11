@@ -195,7 +195,17 @@ AWS_REGION=us-east-1
 AWS_ACCESS_KEY_ID=your_key
 AWS_SECRET_ACCESS_KEY=your_secret
 DYNAMO_TABLE_NAME=your_table
+
+ZAI_API_KEY=your_zai_api_key
+ZAI_MODEL=glm-4.5-flash
 ```
+
+The backend chat agent uses Z.ai's OpenAI-compatible API at
+`https://api.z.ai/api/paas/v4/`. It defaults to `glm-4.5-flash`, which is
+[listed as free](https://docs.z.ai/guides/overview/pricing). Keep `ZAI_API_KEY`
+in the local `.env` file and add it to your Vercel environment variables when
+deploying. `ZAI_MODEL` is optional. The previous `AI_API_KEY`, `AI_ENDPOINT`,
+and `AI_MODEL` settings are no longer used.
 
 ### Run Locally
 
