@@ -13,9 +13,15 @@
       "headers": [
         {
           "key": "Cache-Control",
-          "value": "s-maxage=60, stale-while-revalidate=300"
+          "value": "private, no-store"
         }
       ]
+    }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron/sync-sources",
+      "schedule": "0 2 * * *"
     }
   ]
 }

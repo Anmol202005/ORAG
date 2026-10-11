@@ -265,3 +265,75 @@ Please run `npm run lint` before submitting.
 Made by [Anmol Sharma](https://github.com/Anmol202005)
 
 </div>
+
+## Workspace features
+
+The workspace supports:
+
+- **Cited answers:** inline citations open the exact retrieved passage. PDF passages retain page numbers. Deleted documents and superseded versions are excluded from new retrievals.
+- **Private saved conversations:** chats are stored per user and organization in DynamoDB. Rename conversations, search their messages, bookmark answers, and resume them from the Chats tab. Concurrent edits are checked by revision; conversations are limited to 500 messages and 300 KB.
+- **Document management:** preview extracted content, rename files, organize collections, replace files, and delete originals, passages, and index entries. Existing documents indexed before this update need to be replaced to enable full previews.
+- **Upload status:** select multiple files, track byte progress and extraction/indexing stages, detect duplicates by content hash, and retry failures. A failed replacement keeps the previous committed evidence available.
+- **Connected sources:** owners/admins can connect a Google Drive folder (including subfolders and supported Google Docs/files), or Notion pages shared with an internal connection. Manual and scheduled sync update changed content and remove deleted content. Disconnecting keeps imported documents until you delete them.
+
+Original uploads and extracted passage snapshots stay in **private Vercel Blob storage**. Budget for their retained storage. The workspace and API responses are private and are not cached.
+
+### Source connection setup
+
+Configure these server-side environment variables:
+
+```env
+# Existing application services
+DYNAMO_TABLE_NAME=your_table
+PINECONE_API_KEY=your_key
+PINECONE_INDEX_NAME=your_integrated_embedding_index
+BLOB_READ_WRITE_TOKEN=your_private_blob_store_token
+JWT_SECRET=your_session_signing_secret
+
+# Source connections
+INTEGRATION_ENCRYPTION_KEY=a_random_secret_with_at_least_32_characters
+APP_URL=https://your-deployment.example
+GOOGLE_CLIENT_ID=your_oauth_web_client_id
+GOOGLE_CLIENT_SECRET=your_oauth_web_client_secret
+
+# Scheduled source sync
+CRON_SECRET=a_random_secret
+```
+
+`TABLE_NAME` remains supported as a fallback for the workspace APIs. All services must point to the same DynamoDB table. Keep the integration encryption key stable: changing it requires reconnecting sources.
+
+For **Google Drive**, enable the Drive API for your Google Cloud project. Add `${APP_URL}/api/integrations/google-callback` as an authorized redirect URI for its OAuth web client. Configure the consent screen for `https://www.googleapis.com/auth/drive.readonly` and add test users when the app is in testing. The workspace asks for a folder URL or ID before authorization. Google may require verification before you make this scope available broadly. See [Google's server OAuth documentation](https://developers.google.com/identity/protocols/oauth2/web-server).
+
+For **Notion**, create an internal connection with permission to read content, then share the intended pages with it. An organization owner/admin enters the connection token in Connected sources. The token is validated, encrypted on the server, and never returned to the browser. Only content shared with that connection is indexed. See [Notion's connection setup](https://developers.notion.com/docs/create-a-notion-integration).
+
+Imported content is readable by all members of the ORAG organization. A connection supports up to 1,000 documents; choose a focused Drive folder or share a focused set of Notion pages. Drive spreadsheets/slides and Notion attachments are not imported by this text connector.
+
+### Scheduled refreshes
+
+`vercel.json` registers `/api/cron/sync-sources` at 02:00 UTC daily. Configure `CRON_SECRET` in Vercel so scheduled requests are authenticated. Connections use refresh credentials and server-side leases; sync runs are bounded by the serverless execution budget. The scheduler prioritizes the oldest attempt. Large imports can span several runs; the source panel reports pending items and **Sync now** continues immediately. For larger deployments, move sync work to a durable queue with a worker per connection.
+
+No DynamoDB index migration is required. New records use these keys:
+
+| Partition key | Sort key | Purpose |
+|---|---|---|
+| `ORG#<orgId>` | `DOC#<docId>` | Document metadata, status and committed snapshot |
+| `ORG#<orgId>` | `HASH#<sha256>` | Duplicate guard for uploaded files |
+| `USER#<userId>` | `CHAT#<orgId>#<chatId>` | Private conversation with revision |
+| `ORG#<orgId>` | `INTEGRATION#<provider>` | Encrypted source credentials and sync state |
+| `SYNC#ACTIVE` | `<orgId>#<provider>` | Scheduled-sync registry |
+| `OAUTH#<nonce>` | `STATE` | Single-use Google OAuth state; expiry is checked in code |
+
+Optionally configure DynamoDB TTL for `expiresAt` to clean up unused OAuth state records.
+
+### Verification
+
+```bash
+npm run build
+npm run check:api
+npm test
+npx playwright install chromium
+npm run test:ui
+npm run lint
+```
+
+The backend tests mock DynamoDB, private Blob storage, the vector index, and source APIs. Browser checks cover cited chat, saved history, bookmarks, document operations, connector controls, failed-upload retry, and mobile layout with mocked API responses. Run a deployment smoke test against configured services before release; these tests do not authorize or contact real connected accounts.

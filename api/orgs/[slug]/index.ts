@@ -16,7 +16,7 @@ dotenv.config({ path: "./.env" });
 const ddb = DynamoDBDocumentClient.from(
   new DynamoDBClient({ region: process.env.AWS_REGION ?? "us-east-1" })
 );
-const TABLE = process.env.TABLE_NAME!;
+const TABLE = process.env.DYNAMO_TABLE_NAME ?? process.env.TABLE_NAME!;
 
 const handler = async (req: AuthenticatedRequest, res: VercelResponse) => {
   if (req.method !== "GET") {
@@ -39,7 +39,7 @@ const handler = async (req: AuthenticatedRequest, res: VercelResponse) => {
 
   return res.status(200).json({
     success: true,
-    org: orgRecord.Item,
+    org: { ...orgRecord.Item, role: req.orgMember!.role },
   });
 };
 
