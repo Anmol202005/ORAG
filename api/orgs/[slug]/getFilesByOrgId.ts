@@ -1,4 +1,8 @@
+// api/orgs/[slug]/getFilesByOrgId.ts
 import type { VercelResponse } from "@vercel/node";
+import { QueryCommand } from "@aws-sdk/lib-dynamodb";
+import { docClient } from "../../../lib/dynamo.js";
+import dotenv from "dotenv";
 import {
   compose,
   withCors,
@@ -6,12 +10,41 @@ import {
   withOrgMember,
   type AuthenticatedRequest,
 } from "../../../lib/middleware.js";
-import { listDocuments } from "../../../lib/knowledge.js";
+
+dotenv.config({ path: "./.env" });
+const TABLE = process.env.TABLE_NAME!;
+
 const handler = async (req: AuthenticatedRequest, res: VercelResponse) => {
-  res.setHeader("Cache-Control", "private, no-store");
-  if (req.method !== "GET")
+  if (req.method !== "GET") {
     return res.status(405).json({ error: "Method not allowed" });
-  const documents = await listDocuments(req.orgMember!.orgId);
-  return res.json({ documents, count: documents.length });
+  }
+
+  const { orgId } = req.orgMember!;
+
+  const result = await docClient.send(
+    new QueryCommand({
+      TableName: TABLE,
+      KeyConditionExpression: "pk = :pk AND begins_with(sk, :skPrefix)",
+      ExpressionAttributeValues: {
+        ":pk": `ORG#${orgId}`,
+        ":skPrefix": "DOC#",
+      },
+      ProjectionExpression: "docId, docName, orgId, totalChunks, uploadedAt",
+    })
+  );
+
+  const documents = result.Items ?? [];
+
+  return res.status(200).json({
+    success: true,
+    org_id: orgId,
+    count: documents.length,
+    documents,
+  });
 };
-export default compose(withCors, withAuth, withOrgMember())(handler);
+
+export default compose(
+  withCors,
+  withAuth,
+  withOrgMember()
+)(handler);
